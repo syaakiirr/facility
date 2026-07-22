@@ -1,0 +1,16 @@
+{
+  "name": "project_kakefa",
+  "version": "1.0.0",
+  "description": "Kak Effa Facilities Dashboard",
+  "main": "index.html",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "serve": "http-server -p 8080"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.0",
+    "dotenv": "^16.4.5",
+    "http-server": "^14.1.1"
+  }
+}
