@@ -40,13 +40,17 @@ const App = {
         // Use hash-based navigation exclusively to avoid double-navigation.
         // Setting the hash fires hashchange which calls navigate() once.
         window.addEventListener('hashchange', () => {
-            const page = window.location.hash.slice(1) || 'dashboard';
-            if (page !== this.currentPage || !this._navigating) {
-                this.navigate(page);
+            const hash = window.location.hash.slice(1) || 'dashboard';
+            const [page, param] = hash.split('|');
+            const isSamePage = page === this.currentPage;
+            const isSameParam = param === this._currentParam;
+            if (!isSamePage || !isSameParam) {
+                this.navigate(page, param);
             }
         });
-        const initialPage = window.location.hash.slice(1) || 'dashboard';
-        this.navigate(initialPage);
+        const initialHash = window.location.hash.slice(1) || 'dashboard';
+        const [initialPage, initialParam] = initialHash.split('|');
+        this.navigate(initialPage, initialParam);
     },
 
     renderShell() {
@@ -100,9 +104,10 @@ const App = {
         });
     },
 
-    async navigate(page) {
+    async navigate(page, param) {
         if (!this.pages[page]) page = 'dashboard';
         this.currentPage = page;
+        this._currentParam = param || null;
         this.currentCompany = null;
 
         // Navigation token: increments with each navigate() call.
@@ -135,7 +140,7 @@ const App = {
         try {
             switch (page) {
                 case 'dashboard': await this.renderDashboard(content, isCurrent); break;
-                case 'applications': await this.renderApplications(content); break;
+                case 'applications': await this.renderApplications(content, param); break;
                 case 'companies': await this.renderCompanies(content); break;
                 case 'banks': await this.renderBanks(content); break;
                 case 'reports': await this.renderReports(content); break;
@@ -534,7 +539,7 @@ const App = {
     },
 
 
-    async renderApplications(el) {
+    async renderApplications(el, companyFilter) {
         const banks = await DB.fetchBanks();
         const bankNames = banks.map(b => b.name);
         const stats = await DB.getDashboardStats();
@@ -995,6 +1000,14 @@ const App = {
             document.getElementById(id)?.addEventListener('change', loadApps);
         });
 
+        // Auto-apply company filter if navigated from Companies page
+        if (companyFilter) {
+            const searchField = document.getElementById('app-search');
+            if (searchField) {
+                searchField.value = decodeURIComponent(companyFilter);
+            }
+        }
+
         loadApps();
     },
 
@@ -1069,14 +1082,7 @@ const App = {
         document.querySelectorAll('.company-card').forEach(card => {
             card.addEventListener('click', () => {
                 const company = card.dataset.company;
-                window.location.hash = 'applications';
-                setTimeout(() => {
-                    const searchField = document.getElementById('app-search');
-                    if (searchField) {
-                        searchField.value = company;
-                        searchField.dispatchEvent(new Event('input'));
-                    }
-                }, 100);
+                window.location.hash = 'applications|' + encodeURIComponent(company);
             });
         });
     },
