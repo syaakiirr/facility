@@ -72,7 +72,8 @@ test.describe('Kak Effa Facilities Dashboard — E2E Tests', () => {
     
     for (const pageKey of pages) {
       await page.click(`[data-page="${pageKey}"]`);
-      await expect(page.locator('#topbar-title')).toContainText(new RegExp(pageKey.replace('_', ' '), 'i'));
+      const expectedTitle = pageKey === 'bos_review' ? /hod review|bos review/i : new RegExp(pageKey.replace('_', ' '), 'i');
+      await expect(page.locator('#topbar-title')).toContainText(expectedTitle);
       await page.waitForTimeout(200); // Short delay to let page render
     }
   });
@@ -126,7 +127,7 @@ test.describe('Kak Effa Facilities Dashboard — E2E Tests', () => {
     
     // Change total approved and status
     await page.fill('#app-form input[name="total_approved"]', '450000');
-    await page.selectOption('#app-form select[name="status"]', 'DONE');
+    await page.selectOption('#app-form select[name="status"]', 'IN FORCE');
     await page.click('#btn-save-app');
     
     // Toast update check
@@ -135,7 +136,7 @@ test.describe('Kak Effa Facilities Dashboard — E2E Tests', () => {
     // Verify change in table
     await page.fill('#app-search', testCompanyName);
     await page.waitForTimeout(500);
-    await expect(tableBody).toContainText('DONE');
+    await expect(tableBody).toContainText('IN FORCE');
 
     // --- 4. DELETE ---
     await page.click('#apps-table-container table tbody tr >> button[title="Delete"]');
@@ -185,9 +186,9 @@ test.describe('Kak Effa Facilities Dashboard — E2E Tests', () => {
   test('Test Case 6: Bos Review Flow', async ({ page }) => {
     await login(page, adminEmail, adminPassword);
     
-    // Go to Bos Review
+    // Go to HOD Review
     await page.click('[data-page="bos_review"]');
-    await expect(page.locator('#topbar-title')).toContainText('Bos Review');
+    await expect(page.locator('#topbar-title')).toContainText('HOD Review');
 
     // Look for proposals
     const firstProposalCard = page.locator('.bos-grid .card').first();

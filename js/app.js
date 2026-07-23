@@ -8,7 +8,7 @@ const App = {
         companies: { label: 'Companies', icon: 'briefcase' },
         banks: { label: 'Banks & BFR', icon: 'building' },
         reports: { label: 'Reports', icon: 'bar-chart' },
-        bos_review: { label: 'Bos Review', icon: 'clipboard' },
+        bos_review: { label: 'HOD Review', icon: 'clipboard' },
         settings: { label: 'Settings', icon: 'settings' }
     },
 
@@ -308,7 +308,7 @@ const App = {
                         <div class="pipeline-val" id="kpi-total">0</div>
                     </div>
                     <div class="pipeline-item">
-                        <div class="pipeline-label">Done</div>
+                        <div class="pipeline-label">In force</div>
                         <div class="pipeline-val done" id="kpi-done">0</div>
                     </div>
                     <div class="pipeline-item">
@@ -373,7 +373,7 @@ const App = {
                         </div>
                         <div class="legend-grid">
                             <div class="legend-item">
-                                <div class="legend-head"><span class="legend-dot done"></span>Done</div>
+                                <div class="legend-head"><span class="legend-dot done"></span>In force</div>
                                 <div class="legend-pct">${donePct}%</div>
                             </div>
                             <div class="legend-item">
@@ -545,7 +545,7 @@ const App = {
             <div class="filter-bar">
                 <input type="text" id="app-search" placeholder="Search company or bank..." />
                 <select id="filter-status"><option value="">All Status</option>
-                    <option>DONE</option><option>IN PROGRESS</option><option>PENDING</option><option>ON HOLD</option><option>HOLD</option><option>REVIEW BY BOS</option>
+                    <option>IN FORCE</option><option>SETTLED</option><option>DONE</option><option>IN PROGRESS</option><option>PENDING</option><option>ON HOLD</option><option>HOLD</option><option>REVIEW BY HOD</option>
                     <option>PREPARATION DOC BY FINANCE</option><option>SUBMISSION DOC TO BANK</option>
                     <option>DECLINED</option><option>DECLINED BY BANK</option><option>DECLINED BY COMPANY</option>
                 </select>
@@ -593,7 +593,6 @@ const App = {
                                 </div>
                             </div>
                             <div class="form-row">
-                                <div class="form-group"><label>BFR (%)</label><input name="bfr" placeholder="6.40" /></div>
                                 <div class="form-group"><label>Type of Facility</label>
                                     <select name="type_facility"><option value="">Select type</option>
                                         <option>TERM LOAN</option><option>OVERDRAFT</option><option>LETTER OF CREDIT</option>
@@ -601,22 +600,23 @@ const App = {
                                         <option>TARGETED RELIEF & RECOVERY</option>
                                     </select>
                                 </div>
+                                <div class="form-group"><label>Name of Facility</label><input name="name_facility" placeholder="Product name" /></div>
                             </div>
-                            <div class="form-group"><label>Name of Facility</label><input name="name_facility" placeholder="Product name" /></div>
+                            <div class="form-row">
+                                <div class="form-group"><label>Profit Rate</label><input name="profit_rate" placeholder="e.g. BFR + 1%" /></div>
+                                <div class="form-group"><label>BFR (%)</label><input name="bfr" placeholder="6.40" /></div>
+                            </div>
                             <div class="form-row">
                                 <div class="form-group"><label>Collateral</label><input name="collateral" placeholder="e.g. 80% SJPP" /></div>
-                                <div class="form-group"><label>Profit Rate</label><input name="profit_rate" placeholder="e.g. BFR + 1%" /></div>
+                                <div class="form-group"><label>Tenure</label><input name="rate_tenure" placeholder="e.g. 7 YEARS" /></div>
                             </div>
-                            <div class="form-row">
-                                <div class="form-group"><label>Rate / Tenure</label><input name="rate_tenure" placeholder="e.g. 7 YEARS" /></div>
-                                <div class="form-group"><label>Status</label>
-                                    <select name="status" required>
-                                        <option>IN PROGRESS</option><option>DONE</option><option>PENDING</option><option>ON HOLD</option><option>HOLD</option>
-                                        <option>REVIEW BY BOS</option>
-                                        <option>PREPARATION DOC BY FINANCE</option><option>SUBMISSION DOC TO BANK</option>
-                                        <option>DECLINED</option><option>DECLINED BY BANK</option><option>DECLINED BY COMPANY</option>
-                                    </select>
-                                </div>
+                            <div class="form-group"><label>Status</label>
+                                <select name="status" required>
+                                    <option>IN FORCE</option><option>SETTLED</option><option>IN PROGRESS</option><option>DONE</option><option>PENDING</option><option>ON HOLD</option><option>HOLD</option>
+                                    <option>REVIEW BY HOD</option>
+                                    <option>PREPARATION DOC BY FINANCE</option><option>SUBMISSION DOC TO BANK</option>
+                                    <option>DECLINED</option><option>DECLINED BY BANK</option><option>DECLINED BY COMPANY</option>
+                                </select>
                             </div>
                             <div class="form-group"><label>Application Details</label><textarea name="app_details" rows="2"></textarea></div>
                             <div class="form-row">
@@ -630,7 +630,10 @@ const App = {
                                 <div class="form-group"><label>Total Requested (RM)</label><input type="number" name="total_requested" step="0.01" /></div>
                                 <div class="form-group"><label>Total Approved (RM)</label><input type="number" name="total_approved" step="0.01" /></div>
                             </div>
-                            <div class="form-group"><label>Fixed Deposit (FD)</label><input name="fixed_deposit" placeholder="e.g. RM 100,000" /></div>
+                            <div class="form-row">
+                                <div class="form-group"><label>Annual Review (Bank)</label><input name="annual_review" placeholder="e.g. June (Annual Review)" /></div>
+                                <div class="form-group"><label>Fixed Deposit (FD)</label><input name="fixed_deposit" placeholder="e.g. RM 100,000" /></div>
+                            </div>
                             <div class="form-group" id="hold-reason-group" style="display:none">
                                 <label>Hold Reason</label>
                                 <input name="hold_reason" placeholder="Why is this on hold?" />
@@ -674,7 +677,7 @@ const App = {
                     { label: 'Facility', render: (v, r) => r.name_facility || '-' },
                     { label: 'Requested', render: (v, r) => `<span style="font-family:var(--font-mono);font-size:11.5px">${UI.formatCurrency(r.total_requested)}</span>` },
                     { label: 'Approved', render: (v, r) => `<span style="font-family:var(--font-mono);font-size:11.5px;color:var(--green);font-weight:600">${UI.formatCurrency(r.total_approved)}</span>` },
-                    { label: 'FD Deposit', render: (v, r) => r.fixed_deposit ? `<span style="font-family:var(--font-mono);font-size:11px">${r.fixed_deposit}</span>` : '-' },
+                    { label: 'Fixed Deposit', render: (v, r) => r.fixed_deposit ? `<span style="font-family:var(--font-mono);font-size:11px">${r.fixed_deposit}</span>` : '-' },
                     { label: 'Status', render: (v, r) => UI.statusBadge(r.status) },
                     { label: 'Reason', render: (v, r) => {
                         if (['ON HOLD','HOLD','PENDING','PREPARATION DOC BY FINANCE','SUBMISSION DOC TO BANK'].includes(r.status)) return r.hold_reason || '-';
@@ -703,12 +706,12 @@ const App = {
                     div.appendChild(viewBtn);
                     div.appendChild(editBtn);
                     if (row.status === 'HOLD' || row.status === 'PENDING') {
-                        const bosBtn = document.createElement('button');
-                        bosBtn.className = 'btn-primary btn-xs';
-                        bosBtn.textContent = 'Bos';
-                        bosBtn.title = 'Send to Bos Review';
-                        bosBtn.onclick = () => sendToBos(row);
-                        div.appendChild(bosBtn);
+                        const hodBtn = document.createElement('button');
+                        hodBtn.className = 'btn-primary btn-xs';
+                        hodBtn.textContent = 'HOD';
+                        hodBtn.title = 'Send to HOD Review';
+                        hodBtn.onclick = () => sendToHod(row);
+                        div.appendChild(hodBtn);
                     }
                     div.appendChild(delBtn);
                     return div;
@@ -752,11 +755,12 @@ const App = {
                             <div class="detail-group"><div class="detail-label">Collateral</div><div class="detail-value">${row.collateral || '-'}</div></div>
                             <div class="detail-group"><div class="detail-label">Fixed Deposit (FD)</div><div class="detail-value">${row.fixed_deposit || '-'}</div></div>
                             <div class="detail-group"><div class="detail-label">Profit Rate</div><div class="detail-value">${row.profit_rate || '-'}</div></div>
-                            <div class="detail-group"><div class="detail-label">Rate / Tenure</div><div class="detail-value">${row.rate_tenure || '-'}</div></div>
+                            <div class="detail-group"><div class="detail-label">Tenure</div><div class="detail-value">${row.rate_tenure || '-'}</div></div>
                         </div>
-                        <div class="detail-section">Dates</div>
+                        <div class="detail-section">Dates & Reviews</div>
                         <div class="detail-grid">
                             <div class="detail-group"><div class="detail-label">Year</div><div class="detail-value">${row.year_application || '-'}</div></div>
+                            <div class="detail-group"><div class="detail-label">Annual Review (Bank)</div><div class="detail-value">${row.annual_review || (row.date_updated ? new Date(row.date_updated).toLocaleDateString('en-GB', { month: 'long' }) + ' (Annual Review)' : '-')}</div></div>
                             <div class="detail-group"><div class="detail-label">Date Doc Sent</div><div class="detail-value">${row.date_doc_sent ? UI.formatDate(row.date_doc_sent) : '-'}</div></div>
                             <div class="detail-group"><div class="detail-label">Date Follow Up</div><div class="detail-value">${row.date_followup ? UI.formatDate(row.date_followup) : '-'}</div></div>
                             <div class="detail-group"><div class="detail-label">Last Updated</div><div class="detail-value">${row.date_updated ? UI.formatDate(row.date_updated) : '-'}</div></div>
@@ -817,8 +821,8 @@ const App = {
             }
         };
 
-        const sendToBos = async (row) => {
-            const confirmed = await UI.confirmDialog(`Send "${row.company} - ${row.type_facility}" to Bos Review? This will navigate to the Bos Review page.`, 'Send to Bos');
+        const sendToHod = async (row) => {
+            const confirmed = await UI.confirmDialog(`Send "${row.company} - ${row.type_facility}" to HOD Review? This will navigate to the HOD Review page.`, 'Send to HOD');
             if (!confirmed) return;
             const banks = await DB.fetchBanks();
             const bankNames = banks.map(b => b.name);
@@ -827,7 +831,7 @@ const App = {
             overlay.innerHTML = `
                 <div class="modal" style="max-width:480px">
                     <div class="modal-header">
-                        <h2>Send to Bos Review</h2>
+                        <h2>Send to HOD Review</h2>
                         <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">&times;</button>
                     </div>
                     <form id="bos-send-form" onsubmit="return false">
@@ -854,7 +858,7 @@ const App = {
                         </div>
                         <div class="modal-footer">
                             <button type="button" class="btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
-                            <button type="submit" class="btn-primary" id="btn-send-bos">Send to Bos</button>
+                            <button type="submit" class="btn-primary" id="btn-send-bos">Send to HOD</button>
                         </div>
                     </form>
                 </div>`;
@@ -868,13 +872,13 @@ const App = {
                 try {
                     data.status = 'PENDING REVIEW';
                     await DB.insertBosReview(data);
-                    await DB.updateApplication(row.id, { status: 'REVIEW BY BOS' });
-                    UI.showToast('Sent to Bos Review', 'success');
+                    await DB.updateApplication(row.id, { status: 'REVIEW BY HOD' });
+                    UI.showToast('Sent to HOD Review', 'success');
                     overlay.remove();
                     window.location.hash = 'bos_review';
                 } catch (err) { UI.showToast('Error: ' + err.message, 'error'); }
                 btn.disabled = false;
-                btn.textContent = 'Send to Bos';
+                btn.textContent = 'Send to HOD';
             });
         };
 
@@ -1929,8 +1933,8 @@ const App = {
             el.innerHTML = `
             <div class="module-header-bar">
                 <div class="module-title-wrap">
-                    <h2>Boss Review Proposals</h2>
-                    <p>Bank facility proposals awaiting management evaluation and approval decision</p>
+                    <h2>HOD Review Proposals</h2>
+                    <p>Bank facility proposals awaiting Head of Department evaluation and approval decision</p>
                 </div>
                 <div class="summary-pills-bar">
                     <div class="pill-stat">

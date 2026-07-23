@@ -170,12 +170,13 @@ const DB = {
     async getDashboardStats() {
         const apps = await this.fetchApplications();
         const total = apps.length;
-        const done = apps.filter(a => a.status === 'DONE');
+        const done = apps.filter(a => a.status === 'IN FORCE' || a.status === 'DONE');
+        const settled = apps.filter(a => a.status === 'SETTLED');
         const inProgress = apps.filter(a => a.status === 'IN PROGRESS' || a.status === 'PREPARATION DOC BY FINANCE' || a.status === 'SUBMISSION DOC TO BANK');
         const declined = apps.filter(a => a.status === 'DECLINED' || a.status === 'DECLINED BY BANK' || a.status === 'DECLINED BY COMPANY');
-        const hold = apps.filter(a => ['ON HOLD','HOLD','REVIEW BY BOS','PENDING'].includes(a.status));
+        const hold = apps.filter(a => ['ON HOLD','HOLD','REVIEW BY BOS','REVIEW BY HOD','PENDING'].includes(a.status));
         const totalRequested = apps.reduce((s, a) => s + this._n(a.total_requested), 0);
-        const totalApproved = apps.reduce((s, a) => s + (a.status === 'DONE' ? this._n(a.total_approved) : 0), 0);
+        const totalApproved = apps.reduce((s, a) => s + (['IN FORCE', 'DONE', 'SETTLED'].includes(a.status) ? this._n(a.total_approved) : 0), 0);
 
         // SLA & Stuck Applications (> 14 days)
         const now = new Date();
@@ -189,7 +190,7 @@ const DB = {
             
             if (startDate) {
                 const days = Math.max(1, Math.round((endDate - startDate) / (1000 * 60 * 60 * 24)));
-                if (['DONE', 'DECLINED', 'DECLINED BY BANK', 'DECLINED BY COMPANY'].includes(a.status)) {
+                if (['IN FORCE', 'DONE', 'SETTLED', 'DECLINED', 'DECLINED BY BANK', 'DECLINED BY COMPANY'].includes(a.status)) {
                     slaTotalDays += days;
                     slaCount++;
                 } else if (days > 14) {
@@ -197,10 +198,10 @@ const DB = {
                 }
             }
         });
-
+        
         const avgSlaDays = slaCount > 0 ? Math.round(slaTotalDays / slaCount) : 12;
 
-        const statusCount = { DONE: done.length, 'IN PROGRESS': inProgress.length, HOLD: hold.length, 'REVIEW BY BOS': apps.filter(a => a.status === 'REVIEW BY BOS').length, DECLINED: declined.length, PENDING: apps.filter(a => a.status === 'PENDING').length, 'PREPARATION DOC BY FINANCE': apps.filter(a => a.status === 'PREPARATION DOC BY FINANCE').length, 'SUBMISSION DOC TO BANK': apps.filter(a => a.status === 'SUBMISSION DOC TO BANK').length };
+        const statusCount = { 'IN FORCE': done.length, DONE: done.length, SETTLED: settled.length, 'IN PROGRESS': inProgress.length, HOLD: hold.length, 'REVIEW BY HOD': apps.filter(a => a.status === 'REVIEW BY HOD').length, DECLINED: declined.length, PENDING: apps.filter(a => a.status === 'PENDING').length, 'PREPARATION DOC BY FINANCE': apps.filter(a => a.status === 'PREPARATION DOC BY FINANCE').length, 'SUBMISSION DOC TO BANK': apps.filter(a => a.status === 'SUBMISSION DOC TO BANK').length };
 
         const bankCounts = {};
         apps.forEach(a => {
@@ -212,9 +213,9 @@ const DB = {
             if (!a.company) return;
             if (!companyTotals[a.company]) companyTotals[a.company] = { requested: 0, approved: 0, done: 0, pending: 0, declined: 0 };
             companyTotals[a.company].requested += this._n(a.total_requested);
-            companyTotals[a.company].approved += a.status === 'DONE' ? this._n(a.total_approved) : 0;
-            if (a.status === 'DONE') companyTotals[a.company].done++;
-            else if (a.status === 'IN PROGRESS' || a.status === 'PENDING' || a.status === 'ON HOLD' || a.status === 'HOLD' || a.status === 'REVIEW BY BOS') companyTotals[a.company].pending++;
+            companyTotals[a.company].approved += ['IN FORCE', 'DONE', 'SETTLED'].includes(a.status) ? this._n(a.total_approved) : 0;
+            if (['IN FORCE', 'DONE', 'SETTLED'].includes(a.status)) companyTotals[a.company].done++;
+            else if (a.status === 'IN PROGRESS' || a.status === 'PENDING' || a.status === 'ON HOLD' || a.status === 'HOLD' || a.status === 'REVIEW BY HOD' || a.status === 'REVIEW BY BOS') companyTotals[a.company].pending++;
             else companyTotals[a.company].declined++;
         });
 
@@ -234,6 +235,8 @@ const DB = {
                 declineReasons[reason] = (declineReasons[reason] || 0) + 1;
             }
         });
+
+
 
         const yearCounts = {};
         apps.forEach(a => {
@@ -255,7 +258,7 @@ const DB = {
                 if (monthlyCounts[mName]) {
                     monthlyCounts[mName].total++;
                     monthlyCounts[mName].requested += this._n(a.total_requested);
-                    if (a.status === 'DONE') {
+                    if (['IN FORCE', 'DONE', 'SETTLED'].includes(a.status)) {
                         monthlyCounts[mName].done++;
                         monthlyCounts[mName].approved += this._n(a.total_approved);
                     } else if (['DECLINED', 'DECLINED BY BANK', 'DECLINED BY COMPANY'].includes(a.status)) {
@@ -272,7 +275,7 @@ const DB = {
             }
         });
 
-        return { total, done: done.length, inProgress: inProgress.length, declined: declined.length, hold: hold.length, totalRequested, totalApproved, statusCount, bankCounts, companyTotals, declineReasons, yearCounts, monthlyCounts, facilityCounts, avgSlaDays, stuckApps, topCompanyRisk, apps };
+        return { total, done: done.length, settled: settled.length, inProgress: inProgress.length, declined: declined.length, hold: hold.length, totalRequested, totalApproved, statusCount, bankCounts, companyTotals, declineReasons, yearCounts, monthlyCounts, facilityCounts, avgSlaDays, stuckApps, topCompanyRisk, apps };
     },
 
     async getBankStats(apps) {
@@ -286,9 +289,9 @@ const DB = {
         apps.forEach(a => {
             if (!a.bank || !bankStats[a.bank]) return;
             bankStats[a.bank].requested += this._n(a.total_requested);
-            bankStats[a.bank].approved += a.status === 'DONE' ? this._n(a.total_approved) : 0;
+            bankStats[a.bank].approved += ['IN FORCE', 'DONE', 'SETTLED'].includes(a.status) ? this._n(a.total_approved) : 0;
             bankStats[a.bank].count++;
-            if (a.status === 'DONE') bankStats[a.bank].done++;
+            if (['IN FORCE', 'DONE', 'SETTLED'].includes(a.status)) bankStats[a.bank].done++;
             else if (a.status === 'DECLINED' || a.status === 'DECLINED BY BANK' || a.status === 'DECLINED BY COMPANY') bankStats[a.bank].declined++;
 
             const startDate = a.date_doc_sent ? new Date(a.date_doc_sent) : (a.created_at ? new Date(a.created_at) : null);
