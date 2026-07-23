@@ -596,11 +596,18 @@ const App = {
                                 <div class="form-group"><label>Type of Facility</label>
                                     <select name="type_facility"><option value="">Select type</option>
                                         <option>TERM LOAN</option><option>OVERDRAFT</option><option>LETTER OF CREDIT</option>
+                                        <option>TRADE FINANCING</option><option>OVERDRAFT + TRADE FINANCING</option>
+                                        <option>OVERDRAFT + CAPITAL FINANCING</option>
+                                        <option>OTHERS</option>
                                         <option>CAPITAL FINANCING</option><option>ASSET FINANCING</option><option>COLLABORATIVE FINANCING</option>
                                         <option>TARGETED RELIEF & RECOVERY</option>
                                     </select>
                                 </div>
                                 <div class="form-group"><label>Name of Facility</label><input name="name_facility" placeholder="Product name" /></div>
+                            </div>
+                            <div class="form-row" id="type-facility-custom-group" style="display:none">
+                                <div class="form-group"><label>Specify Custom Type of Facility</label><input name="type_facility_custom" placeholder="e.g. SPECIAL LOAN" /></div>
+                                <div></div>
                             </div>
                             <div class="form-row">
                                 <div class="form-group"><label>Profit Rate</label><input name="profit_rate" placeholder="e.g. BFR + 1%" /></div>
@@ -803,7 +810,25 @@ const App = {
             editingId = row.id;
             document.getElementById('modal-app-title').textContent = 'Edit Application';
             document.getElementById('btn-save-app').textContent = 'Update Application';
-            UI.setFormData('app-form', row);
+            
+            const typeSelect = document.querySelector('#app-form [name="type_facility"]');
+            const selectOptions = typeSelect ? Array.from(typeSelect.options).map(opt => opt.value || opt.textContent) : [];
+            const isStandard = selectOptions.includes(row.type_facility);
+            
+            let rowData = { ...row };
+            if (row.type_facility && !isStandard) {
+                rowData.type_facility = 'OTHERS';
+                rowData.type_facility_custom = row.type_facility;
+            } else {
+                rowData.type_facility_custom = '';
+            }
+            
+            UI.setFormData('app-form', rowData);
+            
+            if (typeSelect) {
+                typeSelect.dispatchEvent(new Event('change'));
+            }
+            
             const statusSelect = document.querySelector('#app-form [name="status"]');
             statusSelect.dispatchEvent(new Event('change'));
             UI.openModal('modal-app');
@@ -882,6 +907,20 @@ const App = {
             });
         };
 
+        const typeSelect = document.querySelector('#app-form [name="type_facility"]');
+        const typeCustomGroup = document.getElementById('type-facility-custom-group');
+        if (typeSelect) {
+            typeSelect.addEventListener('change', (e) => {
+                if (e.target.value === 'OTHERS') {
+                    typeCustomGroup.style.display = '';
+                    document.querySelector('#app-form [name="type_facility_custom"]').setAttribute('required', 'true');
+                } else {
+                    typeCustomGroup.style.display = 'none';
+                    document.querySelector('#app-form [name="type_facility_custom"]').removeAttribute('required');
+                }
+            });
+        }
+
         document.querySelector('#app-form [name="bank"]').addEventListener('change', (e) => {
             const selectedBank = banks.find(b => b.name === e.target.value);
             const bfrField = document.querySelector('#app-form [name="bfr"]');
@@ -917,12 +956,19 @@ const App = {
             document.getElementById('modal-app-title').textContent = 'New Application';
             document.getElementById('btn-save-app').textContent = 'Save Application';
             UI.resetForm('app-form');
+            if (typeSelect) {
+                typeSelect.dispatchEvent(new Event('change'));
+            }
             UI.openModal('modal-app');
         });
 
         document.getElementById('app-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const data = UI.getFormData('app-form');
+            if (data.type_facility === 'OTHERS') {
+                data.type_facility = data.type_facility_custom || 'OTHERS';
+            }
+            delete data.type_facility_custom;
             data.progress = progressMap[data.status] !== undefined ? progressMap[data.status] : 0;
             const btn = document.getElementById('btn-save-app');
             btn.disabled = true;
