@@ -6,6 +6,19 @@
 -- 3. Seed data: 20 bank, ~80 rekod permohonan, 2 bos review
 -- ============================================================
 
+-- COMPANIES
+CREATE TABLE IF NOT EXISTS companies (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE companies ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Authenticated users only" ON companies;
+CREATE POLICY "Authenticated users only" ON companies
+  FOR ALL USING (auth.role() = 'authenticated');
+
 -- BANKS
 CREATE TABLE IF NOT EXISTS banks (
   id           UUID DEFAULT gen_random_uuid() PRIMARY KEY,

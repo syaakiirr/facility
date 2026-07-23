@@ -543,7 +543,8 @@ const App = {
         const banks = await DB.fetchBanks();
         const bankNames = banks.map(b => b.name);
         const stats = await DB.getDashboardStats();
-        const companies = Object.keys(stats.companyTotals).sort();
+        const dbCompanies = await DB.fetchCompanies();
+        const companies = dbCompanies.map(c => c.name);
 
         el.innerHTML = `
             <p class="page-subtitle">Manage all financing applications</p>
@@ -587,8 +588,10 @@ const App = {
                                 </div>
                                 <div class="form-group">
                                     <label>Company</label>
-                                    <input list="company-list" name="company" placeholder="Company name" required />
-                                    <datalist id="company-list">${companies.map(c => `<option value="${c}"></option>`).join('')}</datalist>
+                                    <select name="company" required>
+                                        <option value="">Select company</option>
+                                        ${companies.map(c => `<option value="${c}">${c}</option>`).join('')}
+                                    </select>
                                 </div>
                             </div>
                             <div class="form-row">
@@ -662,7 +665,9 @@ const App = {
                         </div>
                     </form>
                 </div>
-            </div>`;
+            </div>
+
+            `;
 
         let editingId = null;
         const loadApps = async () => {
@@ -979,6 +984,12 @@ const App = {
             btn.disabled = true;
             btn.textContent = 'Saving...';
             try {
+                if (data.company) {
+                    const exists = dbCompanies.some(c => c.name.toLowerCase() === data.company.toLowerCase());
+                    if (!exists) {
+                        await DB.insertCompany(data.company);
+                    }
+                }
                 if (editingId) {
                     await DB.updateApplication(editingId, data);
                     UI.showToast('Application updated successfully', 'success');
@@ -1013,78 +1024,185 @@ const App = {
 
     async renderCompanies(el) {
         const stats = await DB.getDashboardStats();
-        const entries = Object.entries(stats.companyTotals || {}).sort((a, b) => a[0].localeCompare(b[0]));
-        const totalRequested = entries.reduce((s, [, d]) => s + d.requested, 0);
-        const totalApproved = entries.reduce((s, [, d]) => s + d.approved, 0);
+        let dbCompanies = await DB.fetchCompanies();
+        const dbNames = new Set(dbCompanies.map(c => c.name.toLowerCase()));
 
-        el.innerHTML = `
-            <div class="module-header-bar">
-                <div class="module-title-wrap">
-                    <h2>Companies</h2>
-                    <p>All client companies and their financing performance statistics</p>
-                </div>
-                <div class="summary-pills-bar">
-                    <div class="pill-stat">
-                        <span class="pill-stat-label">Total Companies</span>
-                        <span class="pill-stat-val">${entries.length}</span>
-                    </div>
-                    <div class="pill-stat">
-                        <span class="pill-stat-label">Total Requested</span>
-                        <span class="pill-stat-val">${UI.formatCurrency(totalRequested)}</span>
-                    </div>
-                    <div class="pill-stat">
-                        <span class="pill-stat-label">Total Approved</span>
-                        <span class="pill-stat-val">${UI.formatCurrency(totalApproved)}</span>
-                    </div>
-                </div>
-            </div>
+        // Auto-insert any company from application data that isn't in companies table yet
+        for (const name of Object.keys(stats.companyTotals || {})) {
+            if (!dbNames.has(name.toLowerCase())) {
+                try {
+                    const inserted = await DB.insertCompany(name);
+                    dbCompanies.push(inserted);
+                    dbNames.add(name.toLowerCase());
+                } catch (err) {
+                    // ignore duplicate conflicts
+                }
+            }
+        }
 
-            <div class="filter-bar" style="margin-bottom:20px">
-                <input type="text" id="company-search" placeholder="Search company name..." />
-            </div>
+        const renderPage = () => {
+            const companyMap = {};
+            dbCompanies.forEach(c => { companyMap[c.name] = { ...c, requested: 0, approved: 0, done: 0, pending: 0, declined: 0 }; });
+            Object.entries(stats.companyTotals || {}).forEach(([name, d]) => {
+                if (companyMap[name]) {
+                    companyMap[name].requested = d.requested;
+                    companyMap[name].approved = d.approved;
+                    companyMap[name].done = d.done;
+                    companyMap[name].pending = d.pending;
+                    companyMap[name].declined = d.declined;
+                }
+            });
+            const entries = Object.values(companyMap).sort((a, b) => a.name.localeCompare(b.name));
+            const totalRequested = entries.reduce((s, d) => s + d.requested, 0);
+            const totalApproved = entries.reduce((s, d) => s + d.approved, 0);
 
-            <div class="company-card-grid" id="company-grid">
-                ${entries.map(([name, data]) => {
-                    const initials = name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() || 'CO';
-                    const successRate = data.requested > 0 ? Math.round((data.approved / data.requested) * 100) : (data.done > 0 ? 100 : 0);
-                    return `
-                    <div class="company-card" data-company="${name}">
-                        <div class="company-card-top">
-                            <div class="avatar-badge">${initials}</div>
-                            <div class="company-card-meta">
-                                <div class="company-card-title">${name}</div>
-                                <div class="company-card-sub">${data.done} Approved / ${(data.done + data.pending + data.declined)} Apps</div>
-                            </div>
-                            <span class="badge ${successRate >= 50 ? 'done' : 'progress'}">${successRate}%</span>
+            el.innerHTML = `
+                <div class="module-header-bar">
+                    <div class="module-title-wrap">
+                        <h2>Companies</h2>
+                        <p>All client companies and their financing performance statistics</p>
+                    </div>
+                    <div class="summary-pills-bar">
+                        <div class="pill-stat">
+                            <span class="pill-stat-label">Total Companies</span>
+                            <span class="pill-stat-val">${entries.length}</span>
                         </div>
-                        <div class="company-card-stats">
-                            <div class="company-stat-item">
-                                <span class="company-stat-label">Requested</span>
-                                <span class="company-stat-val">${UI.formatCurrency(data.requested)}</span>
-                            </div>
-                            <div class="company-stat-item" style="text-align:right">
-                                <span class="company-stat-label">Approved</span>
-                                <span class="company-stat-val" style="color:var(--green)">${UI.formatCurrency(data.approved)}</span>
-                            </div>
+                        <div class="pill-stat">
+                            <span class="pill-stat-label">Total Requested</span>
+                            <span class="pill-stat-val">${UI.formatCurrency(totalRequested)}</span>
                         </div>
-                    </div>`;
-                }).join('')}
-            </div>`;
+                        <div class="pill-stat">
+                            <span class="pill-stat-label">Total Approved</span>
+                            <span class="pill-stat-val">${UI.formatCurrency(totalApproved)}</span>
+                        </div>
+                    </div>
+                </div>
 
-        document.getElementById('company-search')?.addEventListener('input', (e) => {
-            const q = e.target.value.toLowerCase();
+                <div class="filter-bar" style="margin-bottom:20px">
+                    <input type="text" id="company-search" placeholder="Search company name..." />
+                    <button class="btn-primary" id="btn-add-company-page">${this.icons.plus} Add Company</button>
+                </div>
+
+                <div class="company-card-grid" id="company-grid">
+                    ${entries.map(d => {
+                        const initials = d.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() || 'CO';
+                        const successRate = d.requested > 0 ? Math.round((d.approved / d.requested) * 100) : (d.done > 0 ? 100 : 0);
+                        const appCount = d.done + d.pending + d.declined;
+                        return `
+                        <div class="company-card" data-company="${d.name}" data-id="${d.id || ''}">
+                            <div class="company-card-top">
+                                <div class="avatar-badge">${initials}</div>
+                                <div class="company-card-meta">
+                                    <div class="company-card-title">${d.name}</div>
+                                    <div class="company-card-sub">${d.done} Approved / ${appCount} Apps</div>
+                                </div>
+                                <span class="badge ${successRate >= 50 ? 'done' : 'progress'}">${successRate}%</span>
+                                <button class="btn-danger btn-xs" data-delete-company="${d.id}" title="Delete Company" style="margin-left:6px">${this.icons.trash}</button>
+                            </div>
+                            <div class="company-card-stats">
+                                <div class="company-stat-item">
+                                    <span class="company-stat-label">Requested</span>
+                                    <span class="company-stat-val">${UI.formatCurrency(d.requested)}</span>
+                                </div>
+                                <div class="company-stat-item" style="text-align:right">
+                                    <span class="company-stat-label">Approved</span>
+                                    <span class="company-stat-val" style="color:var(--green)">${UI.formatCurrency(d.approved)}</span>
+                                </div>
+                            </div>
+                        </div>`;
+                    }).join('')}
+                </div>
+
+                <div class="modal-overlay" id="modal-add-company-page">
+                    <div class="modal" style="max-width:400px">
+                        <div class="modal-header">
+                            <h2>Add Company</h2>
+                            <button class="modal-close" onclick="UI.closeModal('modal-add-company-page')">&times;</button>
+                        </div>
+                        <form id="add-company-page-form" onsubmit="return false">
+                            <div class="modal-body">
+                                <div class="form-group">
+                                    <label>Company Name</label>
+                                    <input name="new_company_name" placeholder="Enter company name" required />
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn-secondary" onclick="UI.closeModal('modal-add-company-page')">Cancel</button>
+                                <button type="submit" class="btn-primary" id="btn-save-company-page">Add Company</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>`;
+
+            document.getElementById('company-search')?.addEventListener('input', (e) => {
+                const q = e.target.value.toLowerCase();
+                document.querySelectorAll('.company-card').forEach(card => {
+                    const name = card.dataset.company.toLowerCase();
+                    card.style.display = name.includes(q) ? '' : 'none';
+                });
+            });
+
             document.querySelectorAll('.company-card').forEach(card => {
-                const name = card.dataset.company.toLowerCase();
-                card.style.display = name.includes(q) ? '' : 'none';
+                card.addEventListener('click', (e) => {
+                    if (e.target.closest('[data-delete-company]')) return;
+                    const company = card.dataset.company;
+                    window.location.hash = 'applications|' + encodeURIComponent(company);
+                });
             });
-        });
 
-        document.querySelectorAll('.company-card').forEach(card => {
-            card.addEventListener('click', () => {
-                const company = card.dataset.company;
-                window.location.hash = 'applications|' + encodeURIComponent(company);
+            document.querySelectorAll('[data-delete-company]').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const id = btn.dataset.deleteCompany;
+                    if (!id) return;
+                    const company = dbCompanies.find(c => c.id === id);
+                    if (!company) return;
+                    const terminalStatuses = ['IN FORCE', 'DONE', 'SETTLED', 'DECLINED', 'DECLINED BY BANK', 'DECLINED BY COMPANY', 'DECLINED BY BOSS'];
+                    const companyApps = (stats.apps || []).filter(a => a.company?.toLowerCase() === company.name.toLowerCase());
+                    const hasNonTerminal = companyApps.some(a => !terminalStatuses.includes(a.status));
+                    if (hasNonTerminal) {
+                        UI.showToast('Cannot delete: company has active or pending applications', 'error');
+                        return;
+                    }
+                    const confirmed = await UI.confirmDialog(`Delete "${company.name}"?`, 'Delete Company');
+                    if (!confirmed) return;
+                    try {
+                        await DB.deleteCompany(id);
+                        UI.showToast('Company deleted', 'success');
+                        App.renderCompanies(el);
+                    } catch (err) {
+                        UI.showToast('Error deleting company: ' + err.message, 'error');
+                    }
+                });
             });
-        });
+
+            document.getElementById('btn-add-company-page').addEventListener('click', () => {
+                document.getElementById('add-company-page-form').reset();
+                UI.openModal('modal-add-company-page');
+            });
+
+            document.getElementById('add-company-page-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const nameInput = document.querySelector('#add-company-page-form [name="new_company_name"]');
+                const companyName = nameInput.value.trim();
+                if (!companyName) return;
+                const exists = dbCompanies.some(c => c.name.toLowerCase() === companyName.toLowerCase());
+                if (exists) {
+                    UI.showToast('Company already exists', 'error');
+                    return;
+                }
+                try {
+                    await DB.insertCompany(companyName);
+                    UI.closeModal('modal-add-company-page');
+                    UI.showToast(`Company "${companyName}" added`, 'success');
+                    App.renderCompanies(el);
+                } catch (err) {
+                    UI.showToast('Error adding company: ' + err.message, 'error');
+                }
+            });
+        };
+
+        renderPage();
     },
 
     async renderBanks(el) {

@@ -74,6 +74,34 @@ const DB = {
         return true;
     },
 
+    async fetchCompanies() {
+        const { data, error } = await supabaseClient
+            .from('companies')
+            .select('*')
+            .order('name', { ascending: true });
+        if (error) throw error;
+        return data || [];
+    },
+
+    async insertCompany(name) {
+        const { data, error } = await supabaseClient
+            .from('companies')
+            .insert([{ name }])
+            .select()
+            .single();
+        if (error) throw error;
+        return data;
+    },
+
+    async deleteCompany(id) {
+        const { error } = await supabaseClient
+            .from('companies')
+            .delete()
+            .eq('id', id);
+        if (error) throw error;
+        return true;
+    },
+
     async fetchBanks() {
         const { data, error } = await supabaseClient
             .from('banks')
