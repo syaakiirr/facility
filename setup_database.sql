@@ -186,7 +186,7 @@ INSERT INTO applications (category, company, year_application, bank, bfr, type_f
 -- ============================================================
 -- SEED DATA — APPLICATIONS (ASSET)
 -- ============================================================
-INSERT INTO applications (category, company, year_application, bank, type_facility, name_facility, status, app_details, progress, date_updated) VALUES
+INSERT INTO applications (category, company, year_application, bank, type_facility, name_facility, status, app_dettakbolails, progress, date_updated) VALUES
   ('ASSET', 'ATLAS MOTIONS SDN BHD', 2025, 'UOB Bank', 'ASSET FINANCING', 'GAMODA', 'PENDING', 'PENDING PROCESS', 30, '2026-06-30'),
   ('ASSET', 'ATLAS MOTIONS SDN BHD', 2025, 'Public Bank', 'ASSET FINANCING', 'GAMODA', 'PENDING', 'PENDING PROCESS', 30, '2026-06-30');
 
@@ -196,6 +196,36 @@ INSERT INTO applications (category, company, year_application, bank, type_facili
 INSERT INTO bos_review (bank_name, type_facility, name_facility, loan_limit, profit_rate, tenure, collateral, takaful, legal_fee, total_offered, status, notes) VALUES
   ('Affin Bank', 'OVERDRAFT', 'AFFIN Tawarruq Cash Line-i', 'RM 500,000 AND ABOVE', 'BFR 6.56% + Spread 0.5% - 2.5%', 'MONTHLY', 'FD / SJPP', 'TAKAFUL FEE RM 500', 'LEGAL FEE RM 3,000', 500000, 'PENDING REVIEW', 'Cash line facility for working capital. Suitable for companies with strong CCRIS.'),
   ('Affin Bank', 'TERM LOAN', 'AFFIN SME SRF', 'RM 750,000', 'FIXED 3.75%', '5 YEARS', '80% SJPP / CGC', 'TBS', 'TBS', 750000, 'PENDING REVIEW', 'Government subsidy program. Fixed low rate. Suitable for SME expansion.');
+
+-- ============================================================
+-- COLLATERALS
+-- ============================================================
+CREATE TABLE IF NOT EXISTS collaterals (
+  id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  name        TEXT NOT NULL UNIQUE,
+  description TEXT,
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE collaterals ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Authenticated users only" ON collaterals;
+CREATE POLICY "Authenticated users only" ON collaterals
+  FOR ALL USING (auth.role() = 'authenticated');
+
+-- Add collateral_id FK to applications
+ALTER TABLE applications ADD COLUMN IF NOT EXISTS collateral_id UUID REFERENCES collaterals(id) ON DELETE SET NULL;
+
+-- Seed collateral data from existing application collateral values
+INSERT INTO collaterals (name, description) VALUES
+  ('80% SJPP, 20% FD', 'SJPP guarantee with Fixed Deposit top-up'),
+  ('80% SJPP', 'SJPP guarantee only'),
+  ('FD', 'Fixed Deposit'),
+  ('FD / SJPP', 'Fixed Deposit or SJPP guarantee'),
+  ('HARTANAH', 'Property/Real estate as collateral'),
+  ('80% SJPP / CGC', 'SJPP or Credit Guarantee Corporation')
+ON CONFLICT (name) DO NOTHING;
 
 -- ============================================================
 -- RBAC TABLES: profiles, page_permissions, chart_visibility
@@ -314,6 +344,7 @@ INSERT INTO page_permissions (role, page_key, is_allowed) VALUES
   ('staff', 'banks', true),
   ('staff', 'reports', true),
   ('staff', 'bos_review', true),
+  ('staff', 'collateral', true),
   ('staff', 'settings', false)
 ON CONFLICT (role, page_key) DO NOTHING;
 

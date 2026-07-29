@@ -6,7 +6,7 @@ module.exports = defineConfig({
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: 1, // Run tests sequentially to avoid database state conflicts
+  workers: 1,
   reporter: 'html',
   use: {
     baseURL: 'http://localhost:8080',
@@ -16,8 +16,13 @@ module.exports = defineConfig({
   },
   projects: [
     {
+      name: 'setup',
+      testMatch: /auth\.setup\.js/,
+    },
+    {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
+      dependencies: ['setup'],
     },
   ],
   webServer: {

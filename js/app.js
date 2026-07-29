@@ -9,6 +9,7 @@ const App = {
         banks: { label: 'Banks & BFR', icon: 'building' },
         reports: { label: 'Reports', icon: 'bar-chart' },
         bos_review: { label: 'HOD Review', icon: 'clipboard' },
+        collateral: { label: 'Collateral', icon: 'shield' },
         settings: { label: 'Settings', icon: 'settings' }
     },
 
@@ -23,6 +24,7 @@ const App = {
         plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
         edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>',
         trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
+        shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
         settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
         users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
         activity: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
@@ -145,6 +147,7 @@ const App = {
                 case 'banks': await this.renderBanks(content); break;
                 case 'reports': await this.renderReports(content); break;
                 case 'bos_review': await this.renderBosReview(content); break;
+                case 'collateral': await this.renderCollaterals(content); break;
                 case 'settings': await this.renderSettings(content); break;
             }
         } catch (err) {
@@ -545,6 +548,14 @@ const App = {
         const stats = await DB.getDashboardStats();
         const dbCompanies = await DB.fetchCompanies();
         const companies = dbCompanies.map(c => c.name);
+        const collaterals = await DB.fetchCollaterals();
+        let collateralFilter = null;
+
+        // Check if navigated from collateral page with collateral:UUID param
+        if (companyFilter && companyFilter.startsWith('collateral:')) {
+            const collId = companyFilter.replace('collateral:', '');
+            collateralFilter = collaterals.find(c => c.id === collId) || null;
+        }
 
         el.innerHTML = `
             <p class="page-subtitle">Manage all financing applications</p>
@@ -565,6 +576,10 @@ const App = {
                     <option>COMPANY</option><option>PROPERTY</option><option>ASSET</option>
                 </select>
                 <button class="btn-primary" id="btn-add-app">${this.icons.plus} Add Application</button>
+                ${collateralFilter ? `
+                <span class="badge done" style="margin-left:8px;cursor:pointer" id="btn-clear-collateral-filter">
+                    Collateral: ${collateralFilter.name} &times;
+                </span>` : ''}
             </div>
             <div class="card">
                 <div class="card-body" id="apps-table-container"></div>
@@ -622,7 +637,12 @@ const App = {
                                 <div class="form-group"><label>BFR (%)</label><input name="bfr" placeholder="6.40" /></div>
                             </div>
                             <div class="form-row">
-                                <div class="form-group"><label>Collateral</label><input name="collateral" placeholder="e.g. 80% SJPP" /></div>
+                                <div class="form-group"><label>Collateral</label>
+                                    <select name="collateral_id">
+                                        <option value="">Select collateral</option>
+                                        ${collaterals.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
+                                    </select>
+                                </div>
                                 <div class="form-group"><label>Tenure</label><input name="rate_tenure" placeholder="e.g. 7 YEARS" /></div>
                             </div>
                             <div class="form-group"><label>Status</label>
@@ -682,6 +702,7 @@ const App = {
             if (year) filters.year = year;
             const category = document.getElementById('filter-category')?.value;
             if (category) filters.category = category;
+            if (collateralFilter) filters.collateral_id = collateralFilter.id;
 
             const apps = await DB.fetchApplications(filters);
             const container = document.getElementById('apps-table-container');
@@ -692,6 +713,7 @@ const App = {
                     { label: 'Bank', render: (v, r) => r.bank || '-' },
                     { label: 'Type', render: (v, r) => `<span style="font-size:11px">${r.type_facility || '-'}</span>` },
                     { label: 'Facility', render: (v, r) => r.name_facility || '-' },
+                    { label: 'Collateral', render: (v, r) => r.collateral ? `<span style="font-size:11px">${r.collateral}</span>` : '-' },
                     { label: 'Requested', render: (v, r) => `<span style="font-family:var(--font-mono);font-size:11.5px">${UI.formatCurrency(r.total_requested)}</span>` },
                     { label: 'Approved', render: (v, r) => `<span style="font-family:var(--font-mono);font-size:11.5px;color:var(--green);font-weight:600">${UI.formatCurrency(r.total_approved)}</span>` },
                     { label: 'Fixed Deposit', render: (v, r) => r.fixed_deposit ? `<span style="font-family:var(--font-mono);font-size:11px">${r.fixed_deposit}</span>` : '-' },
@@ -979,6 +1001,17 @@ const App = {
                 data.type_facility = data.type_facility_custom || 'OTHERS';
             }
             delete data.type_facility_custom;
+            // Set collateral text from selected option
+            const collSelect = document.querySelector('#app-form [name="collateral_id"]');
+            if (collSelect) {
+                const selectedOpt = collSelect.options[collSelect.selectedIndex];
+                if (selectedOpt && selectedOpt.value) {
+                    data.collateral = selectedOpt.text;
+                } else {
+                    data.collateral = '';
+                    delete data.collateral_id;
+                }
+            }
             data.progress = progressMap[data.status] !== undefined ? progressMap[data.status] : 0;
             const btn = document.getElementById('btn-save-app');
             btn.disabled = true;
@@ -1012,12 +1045,18 @@ const App = {
         });
 
         // Auto-apply company filter if navigated from Companies page
-        if (companyFilter) {
+        if (companyFilter && !companyFilter.startsWith('collateral:')) {
             const searchField = document.getElementById('app-search');
             if (searchField) {
                 searchField.value = decodeURIComponent(companyFilter);
             }
         }
+
+        // Clear collateral filter badge
+        document.getElementById('btn-clear-collateral-filter')?.addEventListener('click', () => {
+            collateralFilter = null;
+            window.location.hash = 'applications';
+        });
 
         loadApps();
     },
@@ -1415,6 +1454,32 @@ const App = {
             </div>
 
             <div class="card" style="margin-bottom:24px">
+                <div class="card-header"><div class="card-header-title">Collateral Distribution</div></div>
+                <div class="card-body">
+                    <div class="custom-bar-list" id="collateral-report-bars">
+                        ${(() => {
+                            const collCounts = {};
+                            stats.apps.forEach(a => {
+                                const c = a.collateral || 'No collateral';
+                                collCounts[c] = (collCounts[c] || 0) + 1;
+                            });
+                            const sorted = Object.entries(collCounts).sort((a, b) => b[1] - a[1]);
+                            const maxCount = sorted.length > 0 ? sorted[0][1] : 1;
+                            return sorted.map(([name, count]) => {
+                                const pct = Math.round((count / maxCount) * 100);
+                                return `
+                                <div class="bank-bar-row">
+                                    <div class="bank-bar-name" style="font-size:12px">${name}</div>
+                                    <div class="bank-bar-track"><div class="bank-bar-fill" style="width:${pct}%;background:var(--primary)"></div></div>
+                                    <div class="bank-bar-count">${count}</div>
+                                </div>`;
+                            }).join('');
+                        })()}
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" style="margin-bottom:24px">
                 <div class="card-header"><div class="card-header-title">Bank SLA & Performance Ranking</div></div>
                 <div class="card-body" id="bank-summary-table"></div>
             </div>
@@ -1467,353 +1532,128 @@ const App = {
             document.getElementById('stuck-apps-table').appendChild(stuckTable);
         }
 
-        // Export Board-Ready One-Pager PDF Handler (tasteskill.dev White Corporate PDF Format)
+        // Export Board-Ready Report as PDF (using html2canvas + jsPDF)
         document.getElementById('btn-export-pdf').addEventListener('click', async () => {
+            const btn = document.getElementById('btn-export-pdf');
+            const origText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Generating PDF...';
             try {
+                if (typeof html2canvas !== 'function' || typeof jspdf === 'undefined') {
+                    UI.showToast('PDF libraries not loaded. Refresh and try again.', 'error');
+                    return;
+                }
+
+                const dateFile = new Date().toISOString().slice(0, 10);
                 const dateStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
-                const printWin = window.open('', '_blank');
-                
+
                 const top5Banks = entries.slice(0, 5);
-                const bankRowsHtml = top5Banks.map(([name, s]) => {
-                    const succRate = s.count > 0 ? Math.round((s.done / s.count) * 100) : 0;
-                    const apprRate = s.requested > 0 ? Math.round((s.approved / s.requested) * 100) : 0;
-                    return `
-                    <tr>
-                        <td><strong>${name}</strong></td>
-                        <td class="mono" style="text-align:center">${s.count}</td>
-                        <td class="mono" style="text-align:center;color:#16a34a">${s.done}</td>
-                        <td class="mono" style="text-align:center;color:#dc2626">${s.declined}</td>
-                        <td class="mono" style="text-align:center;font-weight:600">${s.avgSla || 10}d</td>
-                        <td style="text-align:center"><span class="badge ${succRate >= 50 ? 'badge-green' : 'badge-blue'}">${succRate}%</span></td>
-                        <td class="mono" style="text-align:right">${UI.formatCurrency(s.requested)}</td>
-                        <td class="mono" style="text-align:right;color:#16a34a;font-weight:600">${UI.formatCurrency(s.approved)}</td>
-                        <td class="mono" style="text-align:right;font-weight:600">${apprRate}%</td>
-                    </tr>`;
+                const bankRows = top5Banks.map(([name, s]) => {
+                    const r = s.count > 0 ? Math.round((s.done / s.count) * 100) : 0;
+                    const a = s.requested > 0 ? Math.round((s.approved / s.requested) * 100) : 0;
+                    return `<tr><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px"><b>${name}</b></td><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px;text-align:center">${s.count}</td><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px;text-align:center;color:green">${s.done}</td><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px;text-align:center;color:red">${s.declined}</td><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px;text-align:center">${s.avgSla||10}d</td><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px;text-align:center">${r}%</td><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px;text-align:right">${UI.formatCurrency(s.requested)}</td><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px;text-align:right;color:green">${UI.formatCurrency(s.approved)}</td><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px;text-align:right">${a}%</td></tr>`;
                 }).join('');
 
-                const monthlyEntries = Object.entries(stats.monthlyCounts || {});
-                const monthlyRowsHtml = monthlyEntries.map(([mName, m]) => {
-                    const rate = m.requested > 0 ? Math.round((m.approved / m.requested) * 100) : 0;
-                    return `
-                    <tr>
-                        <td><strong>${mName}</strong></td>
-                        <td class="mono" style="text-align:center">${m.total}</td>
-                        <td class="mono" style="text-align:center;color:#16a34a">${m.done}</td>
-                        <td class="mono" style="text-align:center;color:#dc2626">${m.declined}</td>
-                        <td class="mono" style="text-align:right">${UI.formatCurrency(m.requested)}</td>
-                        <td class="mono" style="text-align:right;color:#16a34a">${UI.formatCurrency(m.approved)}</td>
-                        <td class="mono" style="text-align:right;font-weight:600">${rate}%</td>
-                    </tr>`;
+                const monthlyRows = Object.entries(stats.monthlyCounts || {}).map(([m, d]) => {
+                    const r = d.requested > 0 ? Math.round((d.approved / d.requested) * 100) : 0;
+                    return `<tr><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px"><b>${m}</b></td><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px;text-align:center">${d.total}</td><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px;text-align:center;color:green">${d.done}</td><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px;text-align:center;color:red">${d.declined}</td><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px;text-align:right">${UI.formatCurrency(d.requested)}</td><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px;text-align:right;color:green">${UI.formatCurrency(d.approved)}</td><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px;text-align:right">${r}%</td></tr>`;
                 }).join('');
 
-                printWin.document.write(`
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <title>Executive_Board_Report_${new Date().toISOString().slice(0, 10)}</title>
-                    <style>
-                        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap');
-                        * { box-sizing: border-box; margin: 0; padding: 0; }
-                        body {
-                            font-family: 'Inter', system-ui, sans-serif;
-                            color: #0f172a;
-                            background: #ffffff;
-                            padding: 28px 32px;
-                            font-size: 11.5px;
-                            line-height: 1.45;
-                        }
-                        .page-break { page-break-after: always; }
-                        .report-header {
-                            display: flex;
-                            justify-content: space-between;
-                            align-items: flex-start;
-                            padding-bottom: 14px;
-                            border-bottom: 2px solid #0f172a;
-                            margin-bottom: 18px;
-                        }
-                        .brand-title {
-                            font-size: 20px;
-                            font-weight: 800;
-                            color: #0f172a;
-                            letter-spacing: -0.02em;
-                        }
-                        .report-subtitle {
-                            font-size: 10.5px;
-                            font-weight: 700;
-                            color: #2563eb;
-                            text-transform: uppercase;
-                            letter-spacing: 0.08em;
-                            margin-top: 2px;
-                        }
-                        .meta-box {
-                            text-align: right;
-                            font-size: 11px;
-                            color: #475569;
-                        }
-                        .meta-date {
-                            font-family: 'JetBrains Mono', monospace;
-                            font-weight: 600;
-                            color: #0f172a;
-                        }
-                        .board-alert-banner {
-                            background: #fef2f2;
-                            border: 1px solid #fecaca;
-                            border-radius: 6px;
-                            padding: 10px 14px;
-                            margin-bottom: 16px;
-                            font-size: 11.5px;
-                            color: #991b1b;
-                        }
-                        .board-alert-title {
-                            font-weight: 700;
-                            margin-bottom: 2px;
-                        }
-                        .section-title {
-                            font-size: 12px;
-                            font-weight: 800;
-                            color: #0f172a;
-                            text-transform: uppercase;
-                            letter-spacing: 0.05em;
-                            margin-bottom: 10px;
-                            margin-top: 16px;
-                        }
-                        .metrics-grid {
-                            display: grid;
-                            grid-template-columns: repeat(4, 1fr);
-                            gap: 10px;
-                            margin-bottom: 18px;
-                        }
-                        .metric-card {
-                            border: 1px solid #e2e8f0;
-                            border-radius: 6px;
-                            padding: 12px 14px;
-                            background: #f8fafc;
-                        }
-                        .metric-label {
-                            font-size: 10px;
-                            font-weight: 700;
-                            color: #64748b;
-                            text-transform: uppercase;
-                            letter-spacing: 0.05em;
-                        }
-                        .metric-val {
-                            font-size: 18px;
-                            font-weight: 800;
-                            color: #0f172a;
-                            font-family: 'JetBrains Mono', monospace;
-                            margin-top: 2px;
-                        }
-                        .metric-delta {
-                            font-size: 10px;
-                            color: #16a34a;
-                            font-weight: 600;
-                            margin-top: 2px;
-                        }
-                        table {
-                            width: 100%;
-                            border-collapse: collapse;
-                            font-size: 11px;
-                            margin-bottom: 18px;
-                        }
-                        th {
-                            background: #f1f5f9;
-                            color: #334155;
-                            font-weight: 700;
-                            font-size: 10px;
-                            text-transform: uppercase;
-                            letter-spacing: 0.05em;
-                            padding: 7px 9px;
-                            text-align: left;
-                            border-bottom: 1px solid #cbd5e1;
-                        }
-                        td {
-                            padding: 7px 9px;
-                            border-bottom: 1px solid #e2e8f0;
-                            color: #1e293b;
-                        }
-                        tr:nth-child(even) td {
-                            background: #fafbfc;
-                        }
-                        .mono {
-                            font-family: 'JetBrains Mono', monospace;
-                        }
-                        .badge {
-                            display: inline-block;
-                            padding: 2px 7px;
-                            border-radius: 10px;
-                            font-size: 10px;
-                            font-weight: 700;
-                            font-family: 'JetBrains Mono', monospace;
-                        }
-                        .badge-green { background: #dcfce7; color: #15803d; }
-                        .badge-blue { background: #dbeafe; color: #1e40af; }
-                        .footer {
-                            margin-top: 24px;
-                            padding-top: 10px;
-                            border-top: 1px solid #e2e8f0;
-                            display: flex;
-                            justify-content: space-between;
-                            font-size: 10px;
-                            color: #94a3b8;
-                        }
-                        @media print {
-                            body { padding: 10px; }
-                        }
-                    </style>
-                </head>
-                <body>
-                    <!-- PAGE 1: BOARD-READY ONE-PAGER -->
-                    <div class="report-header">
-                        <div>
-                            <div class="brand-title">KAK EFA FACILITIES MANAGEMENT</div>
-                            <div class="report-subtitle">Board-Ready Executive Summary (One-Pager)</div>
-                        </div>
-                        <div class="meta-box">
-                            <div>Date Generated: <span class="meta-date">${dateStr}</span></div>
-                            <div>Classification: <strong>Board Confidential</strong></div>
-                        </div>
-                    </div>
+                const collMap = {};
+                stats.apps.forEach(a => { const c = a.collateral || 'None'; collMap[c] = (collMap[c]||0)+1; });
+                const collRows = Object.entries(collMap).sort((a,b)=>b[1]-a[1]).map(([n,c]) => `<tr><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px"><b>${n}</b></td><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px;text-align:center">${c}</td></tr>`).join('');
 
-                    ${hasRiskConcentration ? `
-                    <div class="board-alert-banner">
-                        <div class="board-alert-title">🚨 Portfolio Risk Concentration Warning (>30% Exposure)</div>
-                        <div><strong>${stats.topCompanyRisk.name}</strong> accounts for <strong>${stats.topCompanyRisk.percent}%</strong> (${UI.formatCurrency(stats.topCompanyRisk.requested)}) of total requested financing portfolio exposure.</div>
-                    </div>
-                    ` : ''}
+                const el = document.createElement('div');
+                el.innerHTML = '<div style="font-family:sans-serif;color:#000;padding:20px;font-size:11px;line-height:1.4;width:760px">' +
+                    '<div style="display:flex;justify-content:space-between;padding-bottom:10px;border-bottom:2px solid #000;margin-bottom:14px">' +
+                    '<div><div style="font-size:18px;font-weight:800">KAK EFA FACILITIES MANAGEMENT</div><div style="font-size:10px;font-weight:700;color:#2563eb;text-transform:uppercase;margin-top:2px">Board-Ready Executive Summary</div></div>' +
+                    '<div style="text-align:right;font-size:10px;color:#555">Date: <b>'+dateStr+'</b><br>Classification: <b>Board Confidential</b></div></div>' +
 
-                    <div class="section-title">Key Executive Metrics</div>
-                    <div class="metrics-grid">
-                        <div class="metric-card">
-                            <div class="metric-label">Total Applications</div>
-                            <div class="metric-val">${stats.total}</div>
-                            <div class="metric-delta">All active entries</div>
-                        </div>
-                        <div class="metric-card">
-                            <div class="metric-label">Average SLA Turnaround</div>
-                            <div class="metric-val">${stats.avgSlaDays} <span style="font-size:11px">days</span></div>
-                            <div class="metric-delta" style="color:#2563eb">● Processing duration</div>
-                        </div>
-                        <div class="metric-card">
-                            <div class="metric-label">Total Approved</div>
-                            <div class="metric-val" style="color:#16a34a">${UI.formatCurrency(stats.totalApproved)}</div>
-                            <div class="metric-delta">● ${overallRate}% approval ratio</div>
-                        </div>
-                        <div class="metric-card">
-                            <div class="metric-label">Total Requested</div>
-                            <div class="metric-val">${UI.formatCurrency(stats.totalRequested)}</div>
-                            <div class="metric-delta" style="color:#64748b">Portfolio Exposure</div>
-                        </div>
-                    </div>
+                    '<div style="font-size:11px;font-weight:800;text-transform:uppercase;margin-bottom:8px">Key Executive Metrics</div>' +
+                    '<table style="width:100%;border-collapse:collapse;margin-bottom:14px"><tr>' +
+                    '<td style="border:1px solid #ccc;padding:8px;width:25%"><div style="font-size:9px;font-weight:700;color:#666;text-transform:uppercase">Total Applications</div><div style="font-size:16px;font-weight:800;margin-top:2px">'+stats.total+'</div></td>' +
+                    '<td style="border:1px solid #ccc;padding:8px;width:25%"><div style="font-size:9px;font-weight:700;color:#666;text-transform:uppercase">Avg SLA</div><div style="font-size:16px;font-weight:800;margin-top:2px">'+stats.avgSlaDays+'d</div></td>' +
+                    '<td style="border:1px solid #ccc;padding:8px;width:25%"><div style="font-size:9px;font-weight:700;color:#666;text-transform:uppercase">Total Approved</div><div style="font-size:16px;font-weight:800;margin-top:2px;color:green">'+UI.formatCurrency(stats.totalApproved)+'</div></td>' +
+                    '<td style="border:1px solid #ccc;padding:8px;width:25%"><div style="font-size:9px;font-weight:700;color:#666;text-transform:uppercase">Total Requested</div><div style="font-size:16px;font-weight:800;margin-top:2px">'+UI.formatCurrency(stats.totalRequested)+'</div></td></tr></table>' +
 
-                    <div class="section-title">Top Partner Bank SLA & Performance Ranking</div>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Bank Name</th>
-                                <th style="text-align:center">Apps</th>
-                                <th style="text-align:center">Done</th>
-                                <th style="text-align:center">Declined</th>
-                                <th style="text-align:center">SLA</th>
-                                <th style="text-align:center">Success</th>
-                                <th style="text-align:right">Total Requested</th>
-                                <th style="text-align:right">Total Approved</th>
-                                <th style="text-align:right">Approval %</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${bankRowsHtml}
-                        </tbody>
-                    </table>
+                    '<div style="font-size:11px;font-weight:800;text-transform:uppercase;margin-bottom:8px;margin-top:14px">Top Partner Bank SLA & Performance Ranking</div>' +
+                    '<table style="width:100%;border-collapse:collapse;margin-bottom:14px"><thead><tr style="background:#f1f5f9">' +
+                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:left">Bank</th>' +
+                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:center">Apps</th>' +
+                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:center">Done</th>' +
+                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:center">Declined</th>' +
+                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:center">SLA</th>' +
+                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:center">Success</th>' +
+                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:right">Requested</th>' +
+                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:right">Approved</th>' +
+                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:right">Approval %</th></tr></thead><tbody>' +
+                    bankRows + '</tbody></table>' +
 
-                    <div class="footer">
-                        <div>Kak Efa Facilities Management — Board Executive Summary</div>
-                        <div>Page 1 of 2 (Board One-Pager)</div>
-                    </div>
+                    '<div style="font-size:11px;font-weight:800;text-transform:uppercase;margin-bottom:8px;margin-top:14px">Collateral Distribution</div>' +
+                    '<table style="width:100%;border-collapse:collapse;margin-bottom:14px"><thead><tr style="background:#f1f5f9">' +
+                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:left">Collateral Type</th>' +
+                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:center">Applications</th></tr></thead><tbody>' +
+                    collRows + '</tbody></table>' +
 
-                    <div class="page-break"></div>
+                    '<div style="margin-top:20px;padding-top:8px;border-top:1px solid #ccc;font-size:9px;color:#999">Kak Efa Facilities Management — Page 1 of 2</div>' +
+                    '<div style="page-break-before:always;height:20px"></div>' +
 
-                    <!-- PAGE 2: DETAILED MONTHLY TRAJECTORY & BOTTLENECK ANALYSIS -->
-                    <div class="report-header">
-                        <div>
-                            <div class="brand-title">KAK EFA FACILITIES MANAGEMENT</div>
-                            <div class="report-subtitle">Monthly Trajectory & Bottleneck Analysis</div>
-                        </div>
-                        <div class="meta-box">
-                            <div>Date Generated: <span class="meta-date">${dateStr}</span></div>
-                            <div>Classification: <strong>Board Confidential</strong></div>
-                        </div>
-                    </div>
+                    '<div style="display:flex;justify-content:space-between;padding-bottom:10px;border-bottom:2px solid #000;margin-bottom:14px">' +
+                    '<div><div style="font-size:18px;font-weight:800">KAK EFA FACILITIES MANAGEMENT</div><div style="font-size:10px;font-weight:700;color:#2563eb;text-transform:uppercase;margin-top:2px">Monthly Trajectory & Bottleneck Analysis</div></div>' +
+                    '<div style="text-align:right;font-size:10px;color:#555">Date: <b>'+dateStr+'</b></div></div>' +
 
-                    <div class="section-title">Monthly Performance Trajectory</div>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Month</th>
-                                <th style="text-align:center">Applications</th>
-                                <th style="text-align:center">Done</th>
-                                <th style="text-align:center">Declined</th>
-                                <th style="text-align:right">Requested (RM)</th>
-                                <th style="text-align:right">Approved (RM)</th>
-                                <th style="text-align:right">Approval %</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${monthlyRowsHtml}
-                        </tbody>
-                    </table>
+                    '<div style="font-size:11px;font-weight:800;text-transform:uppercase;margin-bottom:8px">Monthly Performance Trajectory</div>' +
+                    '<table style="width:100%;border-collapse:collapse;margin-bottom:14px"><thead><tr style="background:#f1f5f9">' +
+                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:left">Month</th>' +
+                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:center">Apps</th>' +
+                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:center">Done</th>' +
+                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:center">Declined</th>' +
+                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:right">Requested (RM)</th>' +
+                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:right">Approved (RM)</th>' +
+                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:right">Approval %</th></tr></thead><tbody>' +
+                    monthlyRows + '</tbody></table>' +
+                    '<div style="margin-top:20px;padding-top:8px;border-top:1px solid #ccc;font-size:9px;color:#999">Kak Efa Facilities Management — Page 2 of 2</div>' +
+                '</div>';
 
-                    ${stuckCount > 0 ? `
-                    <div class="section-title" style="color:#d97706">Bottleneck Applications (>14 Days Stuck Without Updates)</div>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Company</th>
-                                <th>Bank</th>
-                                <th>Facility</th>
-                                <th>Status</th>
-                                <th style="text-align:center">Days Stuck</th>
-                                <th style="text-align:right">Requested (RM)</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${stats.stuckApps.map(a => `
-                            <tr>
-                                <td><strong>${a.company || '-'}</strong></td>
-                                <td>${a.bank || '-'}</td>
-                                <td>${a.name_facility || a.type_facility || '-'}</td>
-                                <td><span class="badge badge-blue">${a.status}</span></td>
-                                <td class="mono" style="text-align:center;color:#d97706;font-weight:700">${a.days_stuck}d</td>
-                                <td class="mono" style="text-align:right">${UI.formatCurrency(a.total_requested)}</td>
-                            </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                    ` : ''}
+                el.style.cssText = 'position:fixed;left:0;top:0;width:800px;background:#fff;z-index:9999';
+                document.body.appendChild(el);
 
-                    <div class="footer">
-                        <div>Kak Efa Facilities Management — Detailed Monthly Report</div>
-                        <div>Page 2 of 2</div>
-                    </div>
-                </body>
-                </html>
-                `);
-                printWin.document.close();
-                setTimeout(() => {
-                    printWin.print();
-                }, 400);
-                UI.showToast('Board-ready PDF report generated', 'success');
+                await new Promise(r => setTimeout(r, 300));
+
+                const canvas = await html2canvas(el, { scale: 2, useCORS: true, logging: false });
+                document.body.removeChild(el);
+
+                const imgData = canvas.toDataURL('image/jpeg', 0.95);
+                const { jsPDF } = window.jspdf;
+                const pdf = new jsPDF('p', 'mm', 'a4');
+                const pdfW = pdf.internal.pageSize.getWidth();
+                const pdfH = (canvas.height * pdfW) / canvas.width;
+                let heightLeft = pdfH;
+                let position = 0;
+                pdf.addImage(imgData, 'JPEG', 0, position, pdfW, pdfH);
+                heightLeft -= pdf.internal.pageSize.getHeight();
+                while (heightLeft > 0) {
+                    position = heightLeft - pdfH;
+                    pdf.addPage();
+                    pdf.addImage(imgData, 'JPEG', 0, position, pdfW, pdfH);
+                    heightLeft -= pdf.internal.pageSize.getHeight();
+                }
+                pdf.save('KakEfa_Report_' + dateFile + '.pdf');
+                UI.showToast('PDF report downloaded', 'success');
             } catch (err) {
                 UI.showToast('PDF error: ' + err.message, 'error');
             }
+            btn.disabled = false;
+            btn.textContent = origText;
         });
 
         document.getElementById('btn-export-csv').addEventListener('click', async () => {
             try {
                 const apps = await DB.fetchApplications();
-                const headers = ['Company', 'Year', 'Bank', 'BFR', 'Type', 'Facility', 'Status', 'Requested', 'Approved', 'Progress', 'Decline Reason'];
+                const headers = ['Company', 'Year', 'Bank', 'BFR', 'Type', 'Facility', 'Collateral', 'Status', 'Requested', 'Approved', 'Progress', 'Decline Reason'];
                 const rows = apps.map(a => [
                     a.company, a.year_application, a.bank, a.bfr, a.type_facility, a.name_facility,
-                    a.status, a.total_requested, a.total_approved, a.progress, a.decline_reason
+                    a.collateral || '', a.status, a.total_requested, a.total_approved, a.progress, a.decline_reason
                 ]);
                 const csv = [headers.join(','), ...rows.map(r => r.map(v => UI.csvEscape(v)).join(','))].join('\n');
                 const blob = new Blob([csv], { type: 'text/csv' });
@@ -1828,6 +1668,173 @@ const App = {
                 UI.showToast('Export error: ' + err.message, 'error');
             }
         });
+    },
+
+    async renderCollaterals(el) {
+        const collaterals = await DB.fetchCollaterals();
+
+        const renderPage = () => {
+            el.innerHTML = `
+                <div class="module-header-bar">
+                    <div class="module-title-wrap">
+                        <h2>Collateral Types</h2>
+                        <p>Manage collateral types used across financing applications</p>
+                    </div>
+                    <div class="summary-pills-bar">
+                        <div class="pill-stat">
+                            <span class="pill-stat-label">Total Collateral Types</span>
+                            <span class="pill-stat-val">${collaterals.length}</span>
+                        </div>
+                        <button class="btn-secondary" id="btn-export-collateral-csv" style="margin-right:6px">${this.icons['file-text']} Download CSV</button>
+                        <button class="btn-primary" id="btn-add-collateral">${this.icons.plus} Add Collateral</button>
+                    </div>
+                </div>
+
+                <div class="filter-bar" style="margin-bottom:20px">
+                    <input type="text" id="collateral-search" placeholder="Search collateral name..." />
+                </div>
+
+                <div class="company-card-grid" id="collateral-grid">
+                    ${collaterals.map(c => {
+                        const initials = c.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() || 'CO';
+                        return `
+                        <div class="company-card" data-collateral-id="${c.id}" data-collateral-name="${c.name}">
+                            <div class="company-card-top">
+                                <div class="avatar-badge" style="background:var(--primary-light);color:var(--primary)">${initials}</div>
+                                <div class="company-card-meta">
+                                    <div class="company-card-title">${c.name}</div>
+                                    <div class="company-card-sub">${c.description || 'No description'}</div>
+                                </div>
+                                <button class="btn-danger btn-xs" data-delete-collateral="${c.id}" title="Delete Collateral" style="margin-left:6px">${this.icons.trash}</button>
+                            </div>
+                            <div class="company-card-footer" style="padding-top:8px;display:flex;gap:8px;border-top:1px solid var(--border);margin-top:8px">
+                                <button class="btn-secondary btn-xs" data-edit-collateral="${c.id}" style="flex:1">${this.icons.edit} Edit</button>
+                                <button class="btn-primary btn-xs" data-view-apps="${c.id}" style="flex:1">View Applications</button>
+                            </div>
+                        </div>`;
+                    }).join('')}
+                </div>
+
+                <div class="modal-overlay" id="modal-collateral">
+                    <div class="modal" style="max-width:480px">
+                        <div class="modal-header">
+                            <h2 id="modal-collateral-title">Add Collateral</h2>
+                            <button class="modal-close" onclick="UI.closeModal('modal-collateral')">&times;</button>
+                        </div>
+                        <form id="collateral-form" onsubmit="return false">
+                            <div class="modal-body">
+                                <div class="form-group">
+                                    <label>Collateral Name</label>
+                                    <input name="name" placeholder="e.g. 80% SJPP, 20% FD" required />
+                                </div>
+                                <div class="form-group">
+                                    <label>Description (optional)</label>
+                                    <input name="description" placeholder="e.g. SJPP guarantee with FD top-up" />
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn-secondary" onclick="UI.closeModal('modal-collateral')">Cancel</button>
+                                <button type="submit" class="btn-primary" id="btn-save-collateral">Save</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>`;
+
+            let editingCollateralId = null;
+
+            document.getElementById('collateral-search')?.addEventListener('input', (e) => {
+                const q = e.target.value.toLowerCase();
+                document.querySelectorAll('#collateral-grid .company-card').forEach(card => {
+                    const name = card.dataset.collateralName.toLowerCase();
+                    card.style.display = name.includes(q) ? '' : 'none';
+                });
+            });
+
+            document.querySelectorAll('[data-view-apps]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const id = btn.dataset.viewApps;
+                    window.location.hash = 'applications|collateral:' + id;
+                });
+            });
+
+            document.querySelectorAll('[data-edit-collateral]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const id = btn.dataset.editCollateral;
+                    const c = collaterals.find(x => x.id === id);
+                    if (!c) return;
+                    editingCollateralId = id;
+                    document.getElementById('modal-collateral-title').textContent = 'Edit Collateral';
+                    document.getElementById('btn-save-collateral').textContent = 'Update';
+                    UI.setFormData('collateral-form', { name: c.name, description: c.description || '' });
+                    UI.openModal('modal-collateral');
+                });
+            });
+
+            document.querySelectorAll('[data-delete-collateral]').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const id = btn.dataset.deleteCollateral;
+                    const c = collaterals.find(x => x.id === id);
+                    if (!c) return;
+                    const confirmed = await UI.confirmDialog(`Delete collateral "${c.name}"? Applications using this collateral will be unlinked.`, 'Delete Collateral');
+                    if (!confirmed) return;
+                    try {
+                        await DB.deleteCollateral(id);
+                        UI.showToast('Collateral deleted', 'success');
+                        App.renderCollaterals(el);
+                    } catch (err) {
+                        UI.showToast('Error: ' + err.message, 'error');
+                    }
+                });
+            });
+
+            document.getElementById('btn-export-collateral-csv').addEventListener('click', async () => {
+                const headers = ['Name', 'Description', 'Created At'];
+                const rows = collaterals.map(c => [c.name, c.description || '', c.created_at ? new Date(c.created_at).toLocaleDateString('en-GB') : '']);
+                const csv = [headers.join(','), ...rows.map(r => r.map(v => UI.csvEscape(String(v))).join(','))].join('\n');
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `collateral_export_${new Date().toISOString().slice(0, 10)}.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+                UI.showToast('Collateral data exported', 'success');
+            });
+
+            document.getElementById('btn-add-collateral').addEventListener('click', () => {
+                editingCollateralId = null;
+                document.getElementById('modal-collateral-title').textContent = 'Add Collateral';
+                document.getElementById('btn-save-collateral').textContent = 'Save';
+                document.getElementById('collateral-form').reset();
+                UI.openModal('modal-collateral');
+            });
+
+            document.getElementById('collateral-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const data = UI.getFormData('collateral-form');
+                const btn = document.getElementById('btn-save-collateral');
+                btn.disabled = true;
+                btn.textContent = 'Saving...';
+                try {
+                    if (editingCollateralId) {
+                        await DB.updateCollateral(editingCollateralId, data);
+                        UI.showToast('Collateral updated', 'success');
+                    } else {
+                        await DB.insertCollateral(data);
+                        UI.showToast('Collateral added', 'success');
+                    }
+                    UI.closeModal('modal-collateral');
+                    App.renderCollaterals(el);
+                } catch (err) {
+                    UI.showToast('Error: ' + err.message, 'error');
+                }
+                btn.disabled = false;
+                btn.textContent = editingCollateralId ? 'Update' : 'Save';
+            });
+        };
+
+        renderPage();
     },
 
     async renderSettings(el) {

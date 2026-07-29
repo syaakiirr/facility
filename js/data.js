@@ -21,6 +21,7 @@ const DB = {
             query = query.or(`company.ilike.%${filters.search}%,bank.ilike.%${filters.search}%`);
         }
         if (filters.company) query = query.eq('company', filters.company);
+        if (filters.collateral_id) query = query.eq('collateral_id', filters.collateral_id);
 
         const { data, error } = await query;
         if (error) throw error;
@@ -399,5 +400,47 @@ const DB = {
             .single();
         if (error) throw error;
         return data;
+    },
+
+    // ========== COLLATERALS ==========
+
+    async fetchCollaterals() {
+        const { data, error } = await supabaseClient
+            .from('collaterals')
+            .select('*')
+            .order('name', { ascending: true });
+        if (error) throw error;
+        return data || [];
+    },
+
+    async insertCollateral(collateral) {
+        const { data, error } = await supabaseClient
+            .from('collaterals')
+            .insert([collateral])
+            .select()
+            .single();
+        if (error) throw error;
+        return data;
+    },
+
+    async updateCollateral(id, updates) {
+        updates.updated_at = new Date().toISOString();
+        const { data, error } = await supabaseClient
+            .from('collaterals')
+            .update(updates)
+            .eq('id', id)
+            .select()
+            .single();
+        if (error) throw error;
+        return data;
+    },
+
+    async deleteCollateral(id) {
+        const { error } = await supabaseClient
+            .from('collaterals')
+            .delete()
+            .eq('id', id);
+        if (error) throw error;
+        return true;
     }
 };
