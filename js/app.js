@@ -1044,7 +1044,7 @@ const App = {
             document.getElementById(id)?.addEventListener('change', loadApps);
         });
 
-        // Auto-apply company filter if navigated from Companies page
+        // A
         if (companyFilter && !companyFilter.startsWith('collateral:')) {
             const searchField = document.getElementById('app-search');
             if (searchField) {
