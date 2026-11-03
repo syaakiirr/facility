@@ -107,13 +107,13 @@ test.beforeAll(() => {
 // ---------------------------------------------------------------------------
 // Stateless tests — safe to run in parallel
 // ---------------------------------------------------------------------------
-test.describe('Kak Effa Facilities Dashboard — Auth & Read-only', () => {
+test.describe('FM Data Facilities Dashboard — Auth & Read-only', () => {
 
   test('TC1: Authentication failures & UI', async ({ page }) => {
     await page.goto('/pages/login.html');
 
     await expect(page).toHaveTitle(/Login/);
-    await expect(page.locator('.login-logo-text')).toContainText('Kak Effa');
+    await expect(page.locator('.login-logo-text')).toContainText('FM Data');
 
     await page.fill('#email', 'wronguser@test.com');
     await page.fill('#password', 'wrongpassword');
@@ -155,7 +155,7 @@ test.describe('Kak Effa Facilities Dashboard — Auth & Read-only', () => {
 // Running them in parallel with each other (or with a re-run of TC8) risks
 // races on the same rows, so keep this group serial.
 // ---------------------------------------------------------------------------
-test.describe('Kak Effa Facilities Dashboard — Mutating flows', () => {
+test.describe('FM Data Facilities Dashboard — Mutating flows', () => {
   test.describe.configure({ mode: 'serial' });
 
   test('TC4: Applications CRUD operations', async ({ adminPage: page }) => {

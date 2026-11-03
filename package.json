@@ -1,7 +1,7 @@
 {
-  "name": "project_kakefa",
+  "name": "fm-data",
   "version": "1.0.0",
-  "description": "Kak Effa Facilities Dashboard",
+  "description": "FM Data Facilities Dashboard",
   "main": "index.html",
   "scripts": {
     "test": "playwright test",

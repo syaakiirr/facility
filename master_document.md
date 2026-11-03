@@ -1,4 +1,4 @@
-# 📁 KaKeFa Facilities Dashboard — Master Document
+# 📁 FM Data — Master Document
 > **Versi:** 1.0 Final &nbsp;|&nbsp; **Tarikh:** 1 Julai 2026  
 > **Disediakan oleh:** Syakir (Developer / Super Admin)  
 > **Untuk:** Unit Kemudahan Kewangan
@@ -20,7 +20,7 @@ Fail `SUMMARY FACILITIES - LATEST.xlsm` adalah sistem tracking manual yang digun
 - ❌ Data tidak boleh diakses dari luar komputer yang menyimpan fail
 - ❌ Risiko kehilangan data (fail rosak, terlupa save, dll.)
 
-**Penyelesaian:** Sistem web KaKeFa Facilities Dashboard
+**Penyelesaian:** Sistem web FM Data
 
 ---
 
@@ -374,7 +374,7 @@ CREATE POLICY "Authenticated users only" ON applications
 ## 2.5 Struktur Folder Projek
 
 ```
-project_kakefa/
+fm-data/
 ├── index.html              ← Entry point
 ├── css/
 │   └── style.css           ← Design system + semua styles

@@ -196,16 +196,215 @@ const DB = {
         return true;
     },
 
+    // ========== CHANGE REQUESTS (approval workflow) ==========
+
+    async fetchChangeRequests() {
+        const { data, error } = await supabaseClient
+            .from('change_requests')
+            .select('*')
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        return data || [];
+    },
+
+    async insertChangeRequest(cr) {
+        const { data, error } = await supabaseClient
+            .from('change_requests')
+            .insert([cr])
+            .select()
+            .single();
+        if (error) throw error;
+        return data;
+    },
+
+    async updateChangeRequest(id, updates) {
+        const { data, error } = await supabaseClient
+            .from('change_requests')
+            .update(updates)
+            .eq('id', id)
+            .select()
+            .single();
+        if (error) throw error;
+        return data;
+    },
+
+    async deleteChangeRequest(id) {
+        const { error } = await supabaseClient
+            .from('change_requests')
+            .delete()
+            .eq('id', id);
+        if (error) throw error;
+        return true;
+    },
+
+    // Central write path for every entity. Approvers (super_admin) write
+    // straight to the live tables; everyone else files a PENDING request
+    // that only takes effect once HOD approves it.
+    async saveChange(entity, action, recordId, payload, summary) {
+        if (Auth.isSuperAdmin()) {
+            const data = await this._applyChange(entity, action, recordId, payload || {});
+            return { queued: false, data };
+        }
+        const data = await this.insertChangeRequest({
+            entity,
+            action,
+            record_id: action === 'CREATE' ? null : (recordId || null),
+            payload: payload || {},
+            summary: summary || '',
+            status: 'PENDING',
+            requested_by: Auth.getUser()?.id || null,
+            requested_by_email: Auth.getEmail() || null
+        });
+        return { queued: true, data };
+    },
+
+    async _applyChange(entity, action, recordId, payload) {
+        switch (entity) {
+            case 'application':
+                if (action === 'CREATE') {
+                    if (payload.company) {
+                        try { await this.insertCompany(payload.company); } catch (_) { /* company already exists */ }
+                    }
+                    return this.insertApplication(payload);
+                }
+                if (action === 'UPDATE') return this.updateApplication(recordId, payload);
+                if (action === 'DELETE') return this.deleteApplication(recordId);
+                break;
+            case 'company':
+                if (action === 'CREATE') return this.insertCompany(payload.name);
+                if (action === 'DELETE') return this.deleteCompany(recordId);
+                break;
+            case 'bank':
+                if (action === 'CREATE') return this.insertBank(payload);
+                if (action === 'UPDATE') return this.updateBank(recordId, payload);
+                if (action === 'DELETE') return this.deleteBank(recordId);
+                break;
+            case 'collateral':
+                if (action === 'CREATE') return this.insertCollateral(payload);
+                if (action === 'UPDATE') return this.updateCollateral(recordId, payload);
+                if (action === 'DELETE') return this.deleteCollateral(recordId);
+                break;
+        }
+        throw new Error(`Unsupported change: ${entity} ${action}`);
+    },
+
+    async approveChangeRequest(id) {
+        const { data: cr, error } = await supabaseClient
+            .from('change_requests')
+            .select('*')
+            .eq('id', id)
+            .single();
+        if (error) throw error;
+        if (cr.status !== 'PENDING') throw new Error('This request has already been reviewed');
+
+        // Snapshot the current record so a wrong approval can be reversed later.
+        let before = null;
+        if ((cr.action === 'UPDATE' || cr.action === 'DELETE') && cr.record_id) {
+            before = await this._fetchRecord(cr.entity, cr.record_id);
+        }
+
+        const result = await this._applyChange(cr.entity, cr.action, cr.record_id, cr.payload || {});
+        const appliedId = (result && result.id) ? result.id : (cr.record_id || null);
+
+        return this.updateChangeRequest(id, {
+            status: 'APPROVED',
+            before_payload: before || null,
+            applied_record_id: appliedId,
+            reviewed_by: Auth.getUser()?.id || null,
+            reviewed_by_email: Auth.getEmail() || null,
+            reviewed_at: new Date().toISOString()
+        });
+    },
+
+    async rejectChangeRequest(id, notes) {
+        return this.updateChangeRequest(id, {
+            status: 'REJECTED',
+            review_notes: notes || null,
+            reviewed_by: Auth.getUser()?.id || null,
+            reviewed_by_email: Auth.getEmail() || null,
+            reviewed_at: new Date().toISOString()
+        });
+    },
+
+    // Undo a wrong approve/reject. For an approved request the applied change
+    // is reverted; for both cases the request returns to PENDING for re-review.
+    async restoreChangeRequest(id) {
+        const { data: cr, error } = await supabaseClient
+            .from('change_requests')
+            .select('*')
+            .eq('id', id)
+            .single();
+        if (error) throw error;
+        if (cr.status === 'PENDING') throw new Error('This request is already pending');
+
+        if (cr.status === 'APPROVED') {
+            await this._revertChange(cr);
+        }
+
+        return this.updateChangeRequest(id, {
+            status: 'PENDING',
+            applied_record_id: null,
+            restored_by: Auth.getUser()?.id || null,
+            restored_by_email: Auth.getEmail() || null,
+            restored_at: new Date().toISOString()
+        });
+    },
+
+    _entityTable(entity) {
+        return { application: 'applications', company: 'companies', bank: 'banks', collateral: 'collaterals' }[entity] || null;
+    },
+
+    async _fetchRecord(entity, id) {
+        const table = this._entityTable(entity);
+        if (!table || !id) return null;
+        const { data } = await supabaseClient.from(table).select('*').eq('id', id).maybeSingle();
+        return data || null;
+    },
+
+    _stripMeta(record) {
+        if (!record) return record;
+        const clean = { ...record };
+        delete clean.created_at;
+        delete clean.updated_at;
+        return clean;
+    },
+
+    async _revertChange(cr) {
+        const before = this._stripMeta(cr.before_payload);
+        switch (cr.entity) {
+            case 'application':
+                if (cr.action === 'CREATE') { if (cr.applied_record_id) await this.deleteApplication(cr.applied_record_id); }
+                else if (cr.action === 'UPDATE') { if (cr.record_id && cr.before_payload) await this.updateApplication(cr.record_id, this._stripMeta(cr.before_payload)); }
+                else if (cr.action === 'DELETE') { if (cr.before_payload) await this.insertApplication(before); }
+                break;
+            case 'company':
+                if (cr.action === 'CREATE') { if (cr.applied_record_id) await this.deleteCompany(cr.applied_record_id); }
+                else if (cr.action === 'DELETE') { if (cr.before_payload) await this.insertCompany(cr.before_payload.name); }
+                break;
+            case 'bank':
+                if (cr.action === 'CREATE') { if (cr.applied_record_id) await this.deleteBank(cr.applied_record_id); }
+                else if (cr.action === 'UPDATE') { if (cr.record_id && cr.before_payload) await this.updateBank(cr.record_id, this._stripMeta(cr.before_payload)); }
+                else if (cr.action === 'DELETE') { if (cr.before_payload) await this.insertBank(before); }
+                break;
+            case 'collateral':
+                if (cr.action === 'CREATE') { if (cr.applied_record_id) await this.deleteCollateral(cr.applied_record_id); }
+                else if (cr.action === 'UPDATE') { if (cr.record_id && cr.before_payload) await this.updateCollateral(cr.record_id, this._stripMeta(cr.before_payload)); }
+                else if (cr.action === 'DELETE') { if (cr.before_payload) await this.insertCollateral(before); }
+                break;
+        }
+    },
+
     async getDashboardStats() {
         const apps = await this.fetchApplications();
         const total = apps.length;
         const done = apps.filter(a => a.status === 'IN FORCE' || a.status === 'DONE');
-        const settled = apps.filter(a => a.status === 'SETTLED');
+        const settled = apps.filter(a => a.status === 'DISCHARGED' || a.status === 'SETTLED');
         const inProgress = apps.filter(a => a.status === 'IN PROGRESS' || a.status === 'PREPARATION DOC BY FINANCE' || a.status === 'SUBMISSION DOC TO BANK');
         const declined = apps.filter(a => a.status === 'DECLINED' || a.status === 'DECLINED BY BANK' || a.status === 'DECLINED BY COMPANY');
-        const hold = apps.filter(a => ['ON HOLD','HOLD','REVIEW BY BOS','REVIEW BY HOD','PENDING'].includes(a.status));
+        const cancelled = apps.filter(a => a.status === 'CANCELLED BY BANK');
+        const hold = apps.filter(a => ['ON HOLD','REVIEW BY BOS','REVIEW BY HOD','PENDING'].includes(a.status));
         const totalRequested = apps.reduce((s, a) => s + this._n(a.total_requested), 0);
-        const totalApproved = apps.reduce((s, a) => s + (['IN FORCE', 'DONE', 'SETTLED'].includes(a.status) ? this._n(a.total_approved) : 0), 0);
+        const totalApproved = apps.reduce((s, a) => s + (['IN FORCE', 'DONE', 'DISCHARGED', 'SETTLED'].includes(a.status) ? this._n(a.total_approved) : 0), 0);
 
         // SLA & Stuck Applications (> 14 days)
         const now = new Date();
@@ -219,7 +418,7 @@ const DB = {
             
             if (startDate) {
                 const days = Math.max(1, Math.round((endDate - startDate) / (1000 * 60 * 60 * 24)));
-                if (['IN FORCE', 'DONE', 'SETTLED', 'DECLINED', 'DECLINED BY BANK', 'DECLINED BY COMPANY'].includes(a.status)) {
+                if (['IN FORCE', 'DONE', 'DISCHARGED', 'SETTLED', 'DECLINED', 'DECLINED BY BANK', 'DECLINED BY COMPANY', 'CANCELLED BY BANK'].includes(a.status)) {
                     slaTotalDays += days;
                     slaCount++;
                 } else if (days > 14) {
@@ -230,7 +429,7 @@ const DB = {
         
         const avgSlaDays = slaCount > 0 ? Math.round(slaTotalDays / slaCount) : 12;
 
-        const statusCount = { 'IN FORCE': done.length, DONE: done.length, SETTLED: settled.length, 'IN PROGRESS': inProgress.length, HOLD: hold.length, 'REVIEW BY HOD': apps.filter(a => a.status === 'REVIEW BY HOD').length, DECLINED: declined.length, PENDING: apps.filter(a => a.status === 'PENDING').length, 'PREPARATION DOC BY FINANCE': apps.filter(a => a.status === 'PREPARATION DOC BY FINANCE').length, 'SUBMISSION DOC TO BANK': apps.filter(a => a.status === 'SUBMISSION DOC TO BANK').length };
+        const statusCount = { 'IN FORCE': done.length, DONE: done.length, DISCHARGED: settled.length, 'IN PROGRESS': inProgress.length, 'ON HOLD': hold.length, 'REVIEW BY HOD': apps.filter(a => a.status === 'REVIEW BY HOD').length, DECLINED: declined.length, 'CANCELLED BY BANK': cancelled.length, PENDING: apps.filter(a => a.status === 'PENDING').length, 'PREPARATION DOC BY FINANCE': apps.filter(a => a.status === 'PREPARATION DOC BY FINANCE').length, 'SUBMISSION DOC TO BANK': apps.filter(a => a.status === 'SUBMISSION DOC TO BANK').length };
 
         const bankCounts = {};
         apps.forEach(a => {
@@ -242,9 +441,9 @@ const DB = {
             if (!a.company) return;
             if (!companyTotals[a.company]) companyTotals[a.company] = { requested: 0, approved: 0, done: 0, pending: 0, declined: 0 };
             companyTotals[a.company].requested += this._n(a.total_requested);
-            companyTotals[a.company].approved += ['IN FORCE', 'DONE', 'SETTLED'].includes(a.status) ? this._n(a.total_approved) : 0;
-            if (['IN FORCE', 'DONE', 'SETTLED'].includes(a.status)) companyTotals[a.company].done++;
-            else if (a.status === 'IN PROGRESS' || a.status === 'PENDING' || a.status === 'ON HOLD' || a.status === 'HOLD' || a.status === 'REVIEW BY HOD' || a.status === 'REVIEW BY BOS') companyTotals[a.company].pending++;
+            companyTotals[a.company].approved += ['IN FORCE', 'DONE', 'DISCHARGED', 'SETTLED'].includes(a.status) ? this._n(a.total_approved) : 0;
+            if (['IN FORCE', 'DONE', 'DISCHARGED', 'SETTLED'].includes(a.status)) companyTotals[a.company].done++;
+            else if (a.status === 'IN PROGRESS' || a.status === 'PENDING' || a.status === 'ON HOLD' || a.status === 'REVIEW BY HOD' || a.status === 'REVIEW BY BOS') companyTotals[a.company].pending++;
             else companyTotals[a.company].declined++;
         });
 
@@ -287,10 +486,10 @@ const DB = {
                 if (monthlyCounts[mName]) {
                     monthlyCounts[mName].total++;
                     monthlyCounts[mName].requested += this._n(a.total_requested);
-                    if (['IN FORCE', 'DONE', 'SETTLED'].includes(a.status)) {
+                    if (['IN FORCE', 'DONE', 'DISCHARGED', 'SETTLED'].includes(a.status)) {
                         monthlyCounts[mName].done++;
                         monthlyCounts[mName].approved += this._n(a.total_approved);
-                    } else if (['DECLINED', 'DECLINED BY BANK', 'DECLINED BY COMPANY'].includes(a.status)) {
+                    } else if (['DECLINED', 'DECLINED BY BANK', 'DECLINED BY COMPANY', 'CANCELLED BY BANK'].includes(a.status)) {
                         monthlyCounts[mName].declined++;
                     }
                 }
@@ -304,7 +503,7 @@ const DB = {
             }
         });
 
-        return { total, done: done.length, settled: settled.length, inProgress: inProgress.length, declined: declined.length, hold: hold.length, totalRequested, totalApproved, statusCount, bankCounts, companyTotals, declineReasons, yearCounts, monthlyCounts, facilityCounts, avgSlaDays, stuckApps, topCompanyRisk, apps };
+        return { total, done: done.length, settled: settled.length, cancelled: cancelled.length, inProgress: inProgress.length, declined: declined.length, hold: hold.length, totalRequested, totalApproved, statusCount, bankCounts, companyTotals, declineReasons, yearCounts, monthlyCounts, facilityCounts, avgSlaDays, stuckApps, topCompanyRisk, apps };
     },
 
     async getBankStats(apps) {
@@ -318,10 +517,10 @@ const DB = {
         apps.forEach(a => {
             if (!a.bank || !bankStats[a.bank]) return;
             bankStats[a.bank].requested += this._n(a.total_requested);
-            bankStats[a.bank].approved += ['IN FORCE', 'DONE', 'SETTLED'].includes(a.status) ? this._n(a.total_approved) : 0;
+            bankStats[a.bank].approved += ['IN FORCE', 'DONE', 'DISCHARGED', 'SETTLED'].includes(a.status) ? this._n(a.total_approved) : 0;
             bankStats[a.bank].count++;
-            if (['IN FORCE', 'DONE', 'SETTLED'].includes(a.status)) bankStats[a.bank].done++;
-            else if (a.status === 'DECLINED' || a.status === 'DECLINED BY BANK' || a.status === 'DECLINED BY COMPANY') bankStats[a.bank].declined++;
+            if (['IN FORCE', 'DONE', 'DISCHARGED', 'SETTLED'].includes(a.status)) bankStats[a.bank].done++;
+            else if (a.status === 'DECLINED' || a.status === 'DECLINED BY BANK' || a.status === 'DECLINED BY COMPANY' || a.status === 'CANCELLED BY BANK') bankStats[a.bank].declined++;
 
             const startDate = a.date_doc_sent ? new Date(a.date_doc_sent) : (a.created_at ? new Date(a.created_at) : null);
             const endDate = a.date_updated ? new Date(a.date_updated) : now;

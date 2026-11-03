@@ -3,137 +3,167 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Login — Kak Efa Facilities</title>
+  <meta name="description" content="Sign in to FM Data, the workspace for facilities financing and management.">
+  <meta name="theme-color" content="#f8fafc" />
+  <title>Sign in — FM Data</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="../css/style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;450;500;550;600&display=swap" rel="stylesheet" />
   <style>
-    .login-page {
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: var(--surface);
-      padding: 24px;
+    :root {
+      --primary: #0f172a;
+      --on-primary: #ffffff;
+      --secondary: #334155;
+      --accent: #0369a1;
+      --background: #f8fafc;
+      --foreground: #020617;
+      --card: #ffffff;
+      --muted: #e8ecf1;
+      --muted-foreground: #475569;
+      --border: #e2e8f0;
+      --ring: #0f172a;
+      --destructive: #dc2626;
+      --destructive-text: #b91c1c;
+      --destructive-bg: #fef2f2;
+      --font: 'IBM Plex Sans', Arial, sans-serif;
+      --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
+      --space-5: 24px; --space-6: 32px; --space-7: 48px; --space-8: 64px;
     }
-    .login-card {
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      padding: 40px 36px;
-      width: 100%;
-      max-width: 420px;
-      box-shadow: 0 4px 12px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.03);
-      transition: border-color 0.2s, box-shadow 0.2s;
-    }
-    .login-card:hover {
-      border-color: #cbd5e1;
-      box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.08);
-    }
-    .login-logo {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 28px;
-    }
-    .login-logo-icon {
-      width: 42px; height: 42px;
-      background: var(--accent);
-      border-radius: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #fff;
-      font-weight: 700;
-      font-size: 15px;
-      flex-shrink: 0;
-      box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
-    }
-    .login-logo-text {
-      font-size: 20px;
-      font-weight: 700;
-      color: var(--text-1);
-      letter-spacing: -0.01em;
-    }
-    .login-logo-text span {
-      display: block;
-      font-size: 12px;
-      font-weight: 400;
-      color: var(--text-3);
-      margin-top: 0px;
-    }
-    .login-title {
-      font-size: 22px;
-      font-weight: 600;
-      color: var(--text-1);
-      margin-bottom: 4px;
-    }
-    .login-subtitle {
-      font-size: 14px;
-      color: var(--text-2);
-      margin-bottom: 28px;
-    }
-    .login-error {
-      background: var(--red-bg);
-      border: 1px solid #FECACA;
-      border-radius: var(--radius);
-      padding: 10px 14px;
-      font-size: 13px;
-      color: var(--red);
-      margin-bottom: 16px;
-      display: none;
-    }
-    .login-footer {
-      text-align: center;
-      font-size: 12px;
-      color: var(--text-muted);
-      margin-top: 28px;
-    }
-    .loading-dots::after {
-      content: '';
-      animation: dots 1.2s steps(4, end) infinite;
-    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100svh; display: flex; flex-direction: column; background: var(--background); color: var(--foreground); font-family: var(--font); -webkit-font-smoothing: antialiased; }
+    h1 { margin: 0; }
+    p { margin: 0; }
+    a { color: inherit; text-decoration: none; }
+    button { font: inherit; cursor: pointer; }
+    button, a, input { -webkit-tap-highlight-color: transparent; }
+    button, a { transition: color .2s, background .2s; }
+    a:focus-visible, button:focus-visible { outline: 3px solid var(--ring); outline-offset: 3px; }
+    input:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+
+    .skip { position: fixed; left: 16px; top: -100px; background: var(--card); border: 1px solid var(--border); padding: var(--space-3) var(--space-4); z-index: 30; font-size: 13px; }
+    .skip:focus { top: 16px; }
+
+    .page-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-5) clamp(20px, 5vw, 56px); }
+    .brand { display: flex; align-items: center; gap: 13px; font-size: 15px; font-weight: 600; letter-spacing: -.3px; }
+    .brand-monogram { width: 44px; height: 44px; display: grid; place-items: center; color: var(--on-primary); background: var(--primary); font-size: 19px; font-weight: 500; letter-spacing: -1.5px; }
+    .brand-caption { display: block; font-size: 10px; font-weight: 400; letter-spacing: .1px; margin-top: 2px; color: var(--muted-foreground); }
+    .header-link { font-size: 12.5px; font-weight: 500; display: inline-flex; align-items: center; min-height: 44px; gap: 9px; color: var(--muted-foreground); }
+    .header-link:hover { color: var(--accent); }
+    .header-link svg { width: 15px; height: 15px; stroke-width: 1.75px; }
+
+    .main { flex: 1; display: grid; place-items: center; padding: var(--space-6) clamp(16px, 4vw, 56px) var(--space-7); }
+    .auth-card { width: 100%; max-width: 420px; background: var(--card); border: 1px solid var(--border); padding: var(--space-7) var(--space-6); }
+    .auth-step { display: flex; align-items: center; gap: 9px; font-size: 12px; font-weight: 500; color: var(--muted-foreground); }
+    .auth-step .mark { width: 7px; height: 7px; background: var(--primary); flex-shrink: 0; }
+    .auth-card h1 { font-size: clamp(34px, 5vw, 44px); line-height: 1.1; letter-spacing: -.045em; font-weight: 450; margin-top: var(--space-4); }
+    .auth-card > p { color: var(--muted-foreground); font-size: 14px; line-height: 1.7; margin-top: var(--space-3); }
+
+    #login-form { margin-top: var(--space-6); }
+    .form-group { display: flex; flex-direction: column; gap: 8px; }
+    .form-group + .form-group { margin-top: var(--space-5); }
+    .form-group label { font-size: 12.5px; font-weight: 550; }
+    .field-row { position: relative; }
+    .form-group input { width: 100%; font: inherit; font-size: 15px; color: var(--foreground); height: 54px; padding: 0 14px; border: 1px solid var(--border); border-radius: 0; background: var(--card); }
+    .form-group input::placeholder { color: #94a3b8; }
+    .form-group input:hover { border-color: #94a3b8; }
+    #password { padding-right: 64px; }
+    .visibility-toggle { position: absolute; top: 50%; right: 14px; transform: translateY(-50%); border: 0; background: transparent; color: var(--muted-foreground); font-size: 11.5px; font-weight: 550; letter-spacing: .04em; text-transform: uppercase; padding: 10px 2px; min-height: 44px; }
+    .visibility-toggle:hover { color: var(--accent); }
+
+    #btn-login { width: 100%; display: flex; align-items: center; justify-content: center; min-height: 56px; margin-top: var(--space-6); padding: var(--space-4); border: 1px solid var(--primary); background: var(--primary); color: var(--on-primary); font-size: 13.5px; font-weight: 550; }
+    #btn-login:hover { background: var(--accent); border-color: var(--accent); }
+    #btn-login:disabled { background: var(--secondary); border-color: var(--secondary); cursor: default; }
+    .loading-dots::after { content: ''; display: inline-block; animation: dots 1.2s steps(4, end) infinite; }
     @keyframes dots {
       0%  { content: ''; }
       25% { content: '.'; }
       50% { content: '..'; }
       75% { content: '...'; }
     }
+
+    #error-box { display: none; background: var(--destructive-bg); border: 1px solid #fecaca; padding: var(--space-3) var(--space-3); margin-top: var(--space-4); font-size: 13px; line-height: 1.6; color: var(--destructive-text); }
+    #error-box strong { font-weight: 600; }
+    #error-box span { display: block; margin-top: 4px; color: var(--muted-foreground); }
+
+    .auth-support { display: flex; flex-wrap: wrap; gap: 4px 22px; margin-top: var(--space-5); font-size: 12.5px; }
+    .auth-support .help-item { display: inline-flex; align-items: center; min-height: 44px; font-weight: 550; color: var(--primary); }
+    .auth-support .plain { color: var(--muted-foreground); font-weight: 400; align-self: center; }
+
+    .page-footer { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; padding: var(--space-5) clamp(20px, 5vw, 56px) var(--space-6); border-top: 1px solid var(--border); font-size: 11px; color: var(--muted-foreground); }
+
+    @media (max-width: 600px) {
+      .main { padding-top: var(--space-5); align-items: start; }
+      .auth-card { padding: var(--space-6) var(--space-5); }
+      .brand { font-size: 13.5px; gap: 10px; }
+      .brand-monogram { width: 38px; height: 38px; font-size: 16px; }
+      .page-header, .page-footer { padding-inline: 20px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; }
+    }
   </style>
 </head>
 <body>
-<div class="login-page">
-  <div class="login-card">
-    <div class="login-logo">
-      <div class="login-logo-icon">KF</div>
-      <div class="login-logo-text">
-        Kak Effa
-        <span>Facilities Dashboard</span>
-      </div>
-    </div>
+<a class="skip" href="#email">Skip to sign-in form</a>
 
-    <h1 class="login-title">Welcome back</h1>
-    <p class="login-subtitle">Only authorized users existing within the database are permitted to access the system.</p>
+<header class="page-header">
+  <div class="brand">
+    <span class="brand-monogram">FM</span>
+    <span class="login-logo-text">FM Data<span class="brand-caption">Facilities management</span></span>
+  </div>
+  <a class="header-link" href="../landing.html"><i data-lucide="arrow-left" aria-hidden="true"></i>Back to FM Data</a>
+</header>
 
-    <div id="error-box" class="login-error"></div>
+<main class="main">
+  <section class="auth-card" aria-labelledby="auth-heading">
+    <p class="auth-step"><span class="mark" aria-hidden="true"></span>Facilities workspace</p>
+    <h1 id="auth-heading">Sign in.</h1>
+    <p>Use your account to open your applications, bank relationships and facility records.</p>
 
-    <form id="login-form" autocomplete="on">
+    <div id="error-box" role="alert"></div>
+
+    <form id="login-form" autocomplete="on" novalidate>
       <div class="form-group">
-        <label for="email">Email address</label>
-        <input type="email" id="email" name="email" placeholder="muhdsyakir@gmail.com" required autofocus />
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" placeholder="name@company.com" autocomplete="username" required autofocus />
       </div>
       <div class="form-group">
         <label for="password">Password</label>
-        <input type="password" id="password" name="password" placeholder="password" required />
+        <div class="field-row">
+          <input type="password" id="password" name="password" placeholder="Your password" autocomplete="current-password" required />
+          <button type="button" class="visibility-toggle" id="toggle-password" aria-controls="password" aria-pressed="false">Show</button>
+        </div>
       </div>
-      <button type="submit" id="btn-login" class="btn-primary" style="width:100%;justify-content:center;margin-top:4px">Sign in</button>
+      <button type="submit" id="btn-login">Sign in</button>
     </form>
 
-    <p class="login-footer">@syaakiirr</p>
-  </div>
-</div>
+    <div class="auth-support">
+      <span class="help-item">Forgot password / new account?</span>
+      <span class="help-item plain">Write to your unit administrator to reset it or request access.</span>
+    </div>
+  </section>
+</main>
 
+<footer class="page-footer">
+  <span>FM Data</span>
+  <span>Workspace for facilities and financing management</span>
+</footer>
+
+<script>
+  const passInput = document.getElementById('password');
+  const toggleBtn = document.getElementById('toggle-password');
+  toggleBtn.addEventListener('click', () => {
+    const show = passInput.type === 'password';
+    passInput.type = show ? 'text' : 'password';
+    toggleBtn.textContent = show ? 'Hide' : 'Show';
+    toggleBtn.setAttribute('aria-pressed', String(show));
+    passInput.focus();
+  });
+</script>
+<script src="https://unpkg.com/lucide@0.548.0"></script>
+<script>
+  if (window.lucide) lucide.createIcons();
+</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="../js/supabase.js"></script>
 <script>
@@ -148,26 +178,48 @@
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+
+    const email    = document.getElementById('email');
+    const password = document.getElementById('password');
+    const fields   = [email, password];
+
     errorBox.style.display = 'none';
+    const missing = fields.filter(f => !f.checkValidity());
+    if (missing.length) {
+      errorBox.innerHTML = '<strong>Please check the highlighted fields.</strong><span>' +
+        (missing.includes(email) ? 'Enter your email address. ' : '') +
+        (missing.includes(password) ? 'Enter your password.' : '') + '</span>';
+      errorBox.style.display = 'block';
+      missing[0].focus();
+      return;
+    }
+
     btnLogin.disabled = true;
     btnLogin.innerHTML = 'Signing in<span class="loading-dots"></span>';
 
-    const email    = document.getElementById('email').value.trim();
-    const password = document.getElementById('password').value;
-
-    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabaseClient.auth.signInWithPassword({
+      email: email.value.trim(), password: password.value
+    });
 
     if (error) {
-      errorBox.textContent = error.message === 'Invalid login credentials'
-        ? 'Incorrect email or password. Please try again.'
-        : error.message;
+      errorBox.innerHTML = error.message === 'Invalid login credentials'
+        ? '<strong>Incorrect email or password.</strong><span>Check your details and try again, or contact your administrator if you lost your password.</span>'
+        : '<strong>Could not sign in.</strong><span>' + error.message + '</span>';
       errorBox.style.display = 'block';
       btnLogin.disabled = false;
       btnLogin.innerHTML = 'Sign in';
+      password.focus();
+      password.select();
       return;
     }
 
     window.location.href = '../index.html';
+  });
+
+  ['email', 'password'].forEach(id => {
+    document.getElementById(id).addEventListener('input', () => {
+      errorBox.style.display = 'none';
+    });
   });
 </script>
 </body>

@@ -138,6 +138,9 @@ input,select,textarea{font-family:inherit}
   padding: 12px 0 16px 0;
 }
 
+[data-drill]{cursor:pointer}
+[data-drill]:hover{opacity:.85}
+
 .pipeline-item {
   padding: 8px 20px;
   position: relative;
@@ -539,6 +542,21 @@ input,select,textarea{font-family:inherit}
 .form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
 .form-group input::placeholder,.form-group textarea::placeholder{color:var(--text-muted)}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+
+/* OFFICERS (collapsible) */
+.officers-section{border:1px solid var(--border);border-radius:var(--radius);margin-bottom:14px;overflow:hidden}
+.officers-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:var(--surface-2);cursor:pointer;user-select:none}
+.officers-head-left{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:var(--text-2)}
+.officers-caret{width:14px;height:14px;flex-shrink:0;transition:transform .2s}
+.officers-section.open .officers-caret{transform:rotate(90deg)}
+.officers-count{font-size:10.5px;font-weight:600;color:var(--text-3);background:var(--bg);border:1px solid var(--border);border-radius:999px;padding:1px 8px}
+.officers-body{padding:14px;display:none}
+.officers-section.open .officers-body{display:block}
+.officer-row{border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:12px;background:var(--surface)}
+.officer-row:last-child{margin-bottom:0}
+.officer-row-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.officer-row-title{font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.04em}
+.officers-empty{font-size:12px;color:var(--text-3);padding:2px 0;margin:0}
 
 /* TABLES */
 .data-table-wrapper{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-lg);width:100%}

@@ -9,6 +9,7 @@ const App = {
         banks: { label: 'Banks & BFR', icon: 'building' },
         reports: { label: 'Reports', icon: 'bar-chart' },
         bos_review: { label: 'HOD Review', icon: 'clipboard' },
+        review_history: { label: 'Review History', icon: 'activity' },
         collateral: { label: 'Collateral', icon: 'shield' },
         settings: { label: 'Settings', icon: 'settings' }
     },
@@ -34,7 +35,7 @@ const App = {
     async init() {
         const session = await Auth.init();
         if (!session) {
-            window.location.href = 'pages/login.html';
+            window.location.href = 'landing.html';
             return;
         }
         this.renderShell();
@@ -61,8 +62,8 @@ const App = {
             <div class="app-layout">
                 <aside class="sidebar" id="sidebar">
                     <div class="sidebar-logo">
-                        <div class="sidebar-logo-icon">KF</div>
-                        <div class="sidebar-logo-text">Kak Efa<span>Facilities Dashboard</span></div>
+                        <div class="sidebar-logo-icon">FM</div>
+                        <div class="sidebar-logo-text">FM Data<span>Facilities Dashboard</span></div>
                     </div>
                     <nav class="sidebar-nav" id="sidebar-nav">
                         <div class="sidebar-nav-label">Main Menu</div>
@@ -125,6 +126,7 @@ const App = {
         document.getElementById('topbar-title').textContent = this.pages[page].label;
 
         const content = document.getElementById('page-content');
+        content.onclick = null;
         content.innerHTML = '<div class="skeleton" style="height:320px;border-radius:12px;margin-bottom:24px"></div><div class="skeleton" style="height:200px;border-radius:12px"></div>';
 
         // RBAC: if not super admin, check page permission
@@ -147,6 +149,7 @@ const App = {
                 case 'banks': await this.renderBanks(content); break;
                 case 'reports': await this.renderReports(content); break;
                 case 'bos_review': await this.renderBosReview(content); break;
+                case 'review_history': await this.renderReviewHistory(content); break;
                 case 'collateral': await this.renderCollaterals(content); break;
                 case 'settings': await this.renderSettings(content); break;
             }
@@ -311,19 +314,19 @@ const App = {
                     <span class="pipeline-card-title" style="padding:0">Pipeline</span>
                 </div>
                 <div class="pipeline-grid">
-                    <div class="pipeline-item">
+                    <div class="pipeline-item" data-drill="">
                         <div class="pipeline-label">Total applications</div>
                         <div class="pipeline-val" id="kpi-total">0</div>
                     </div>
-                    <div class="pipeline-item">
+                    <div class="pipeline-item" data-drill="group:inforce">
                         <div class="pipeline-label">In force</div>
                         <div class="pipeline-val done" id="kpi-done">0</div>
                     </div>
-                    <div class="pipeline-item">
+                    <div class="pipeline-item" data-drill="group:progress">
                         <div class="pipeline-label">In progress</div>
                         <div class="pipeline-val progress" id="kpi-progress">0</div>
                     </div>
-                    <div class="pipeline-item ${showInsightAlert ? 'active-declined' : ''}">
+                    <div class="pipeline-item ${showInsightAlert ? 'active-declined' : ''}" data-drill="group:declined">
                         <div class="pipeline-label">Declined ↗</div>
                         <div class="pipeline-val declined" id="kpi-declined">0</div>
                     </div>
@@ -368,37 +371,43 @@ const App = {
                 </div>
             </div>
 
-            <div class="card" style="margin-bottom:24px">
-                <div class="card-header"><div class="card-header-title">Application status distribution</div></div>
-                <div class="card-body">
-                    <div class="segmented-bar-container">
-                        <div class="segmented-bar">
-                            <div class="segmented-part done" style="width:${donePct}%"></div>
-                            <div class="segmented-part progress" style="width:${inProgressPct}%"></div>
-                            <div class="segmented-part hold" style="width:${holdPct}%"></div>
-                            <div class="segmented-part declined" style="width:${declinedPct}%"></div>
-                            <div class="segmented-part pending" style="width:${pendingPct}%"></div>
-                        </div>
-                        <div class="legend-grid">
-                            <div class="legend-item">
-                                <div class="legend-head"><span class="legend-dot done"></span>In force</div>
-                                <div class="legend-pct">${donePct}%</div>
+            <div class="grid-2" style="margin-bottom:24px">
+                <div class="card">
+                    <div class="card-header"><div class="card-header-title">Application status</div></div>
+                    <div class="card-body"><div class="chart-container" id="chart-status-donut"></div></div>
+                </div>
+                <div class="card">
+                    <div class="card-header"><div class="card-header-title">Application status distribution</div></div>
+                    <div class="card-body">
+                        <div class="segmented-bar-container">
+                            <div class="segmented-bar">
+                                <div class="segmented-part done" style="width:${donePct}%"></div>
+                                <div class="segmented-part progress" style="width:${inProgressPct}%"></div>
+                                <div class="segmented-part hold" style="width:${holdPct}%"></div>
+                                <div class="segmented-part declined" style="width:${declinedPct}%"></div>
+                                <div class="segmented-part pending" style="width:${pendingPct}%"></div>
                             </div>
-                            <div class="legend-item">
-                                <div class="legend-head"><span class="legend-dot progress"></span>In progress</div>
-                                <div class="legend-pct">${inProgressPct}%</div>
-                            </div>
-                            <div class="legend-item">
-                                <div class="legend-head"><span class="legend-dot hold"></span>Hold</div>
-                                <div class="legend-pct">${holdPct}%</div>
-                            </div>
-                            <div class="legend-item">
-                                <div class="legend-head"><span class="legend-dot declined"></span>Declined</div>
-                                <div class="legend-pct">${declinedPct}%</div>
-                            </div>
-                            <div class="legend-item">
-                                <div class="legend-head"><span class="legend-dot pending"></span>Pending</div>
-                                <div class="legend-pct">${pendingPct}%</div>
+                            <div class="legend-grid">
+                                <div class="legend-item" data-drill="group:inforce">
+                                    <div class="legend-head"><span class="legend-dot done"></span>In force</div>
+                                    <div class="legend-pct">${donePct}%</div>
+                                </div>
+                                <div class="legend-item" data-drill="group:progress">
+                                    <div class="legend-head"><span class="legend-dot progress"></span>In progress</div>
+                                    <div class="legend-pct">${inProgressPct}%</div>
+                                </div>
+                                <div class="legend-item" data-drill="group:hold">
+                                    <div class="legend-head"><span class="legend-dot hold"></span>Hold</div>
+                                    <div class="legend-pct">${holdPct}%</div>
+                                </div>
+                                <div class="legend-item" data-drill="group:declined">
+                                    <div class="legend-head"><span class="legend-dot declined"></span>Declined</div>
+                                    <div class="legend-pct">${declinedPct}%</div>
+                                </div>
+                                <div class="legend-item" data-drill="group:pending">
+                                    <div class="legend-head"><span class="legend-dot pending"></span>Pending</div>
+                                    <div class="legend-pct">${pendingPct}%</div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -412,7 +421,7 @@ const App = {
                         ${topBanks.map(([name, count]) => {
                             const pct = Math.round((count / maxBankCount) * 100);
                             return `
-                            <div class="bank-bar-row">
+                            <div class="bank-bar-row" data-drill="bank:${encodeURIComponent(name)}">
                                 <div class="bank-bar-name">${name}</div>
                                 <div class="bank-bar-track"><div class="bank-bar-fill" style="width:${pct}%"></div></div>
                                 <div class="bank-bar-count">${count}</div>
@@ -438,7 +447,7 @@ const App = {
                         ${companyEntries.map(c => {
                             const appPct = c.requested > 0 ? Math.min(100, Math.round((c.approved / c.requested) * 100)) : 0;
                             return `
-                            <div class="company-bar-row">
+                            <div class="company-bar-row" data-drill="company:${encodeURIComponent(c.name)}">
                                 <div class="company-bar-name">${c.name}</div>
                                 <div class="funding-bar-track">
                                     <div class="funding-bar-fill approved-fill" style="width:${appPct}%"></div>
@@ -485,6 +494,16 @@ const App = {
         animateCounterValue('kpi-requested', stats.totalRequested);
         animateCounterValue('kpi-approved', stats.totalApproved);
 
+        // Status donut (exact per-status counts) — slices drill down to Applications
+        const statusDist = {};
+        (stats.apps || []).forEach(a => {
+            const s = a.status || 'UNKNOWN';
+            statusDist[s] = (statusDist[s] || 0) + 1;
+        });
+        Charts.donutStatus('chart-status-donut', statusDist, (p) => {
+            if (p && p.name) window.location.hash = 'applications|status:' + encodeURIComponent(p.name);
+        });
+
         // Update Funding Gauge & Fill Animation
         const clampedPercent = Math.min(100, Math.max(0, approvedPercent));
         animatePercentage('funding-gauge-percent', clampedPercent);
@@ -516,7 +535,7 @@ const App = {
                 container.innerHTML = displayBanks.map(([name, count]) => {
                     const pct = Math.round((count / maxBankCount) * 100);
                     return `
-                    <div class="bank-bar-row">
+                    <div class="bank-bar-row" data-drill="bank:${encodeURIComponent(name)}">
                         <div class="bank-bar-name">${name}</div>
                         <div class="bank-bar-track"><div class="bank-bar-fill" style="width:${pct}%"></div></div>
                         <div class="bank-bar-count">${count}</div>
@@ -525,6 +544,15 @@ const App = {
             }
             e.target.textContent = isBanksExpanded ? 'Show less' : `Show ${remainingBanksCount} more banks`;
         });
+
+        // Drill-down: click any value to open Applications filtered to it.
+        // Delegated via onclick property (idempotent) so expanded bank rows work too.
+        el.onclick = (e) => {
+            const node = e.target.closest('[data-drill]');
+            if (!node) return;
+            const drill = node.getAttribute('data-drill');
+            window.location.hash = drill ? 'applications|' + drill : 'applications';
+        };
 
         // Recent Apps Table
         const recent = stats.apps.slice(0, 5);
@@ -550,11 +578,46 @@ const App = {
         const companies = dbCompanies.map(c => c.name);
         const collaterals = await DB.fetchCollaterals();
         let collateralFilter = null;
+        let linkParam = companyFilter || null;
 
-        // Check if navigated from collateral page with collateral:UUID param
-        if (companyFilter && companyFilter.startsWith('collateral:')) {
-            const collId = companyFilter.replace('collateral:', '');
+        // Collateral drill-down: collateral:<uuid>
+        if (linkParam && linkParam.startsWith('collateral:')) {
+            const collId = linkParam.replace('collateral:', '');
             collateralFilter = collaterals.find(c => c.id === collId) || null;
+            linkParam = null;
+        }
+
+        // Dashboard drill-downs: group:<key> / status:<value> / bank:<name> / company:<name>
+        const statusGroups = {
+            inforce: ['IN FORCE'],
+            progress: ['IN PROGRESS', 'PREPARATION DOC BY FINANCE', 'SUBMISSION DOC TO BANK'],
+            hold: ['ON HOLD', 'PENDING', 'REVIEW BY HOD', 'REVIEW BY BOS'],
+            pending: ['PENDING'],
+            discharged: ['DISCHARGED', 'SETTLED'],
+            done: ['DONE'],
+            declined: ['DECLINED', 'DECLINED BY BANK', 'DECLINED BY COMPANY'],
+            cancelled: ['CANCELLED BY BANK'],
+        };
+        const statusGroupLabels = {
+            inforce: 'In force', progress: 'In progress', hold: 'Hold', pending: 'Pending',
+            discharged: 'Discharged', done: 'Done', declined: 'Declined', cancelled: 'Cancelled by bank',
+        };
+        let statusGroupFilter = null;
+        let statusGroupLabel = '';
+        let facilityFilter = null;
+        if (linkParam && linkParam.startsWith('group:')) {
+            const key = decodeURIComponent(linkParam.slice(6));
+            statusGroupFilter = statusGroups[key] || null;
+            statusGroupLabel = statusGroupLabels[key] || key;
+            linkParam = null;
+        } else if (linkParam && linkParam.startsWith('status:')) {
+            const val = decodeURIComponent(linkParam.slice(7));
+            statusGroupFilter = [val];
+            statusGroupLabel = val;
+            linkParam = null;
+        } else if (linkParam && linkParam.startsWith('facility:')) {
+            facilityFilter = decodeURIComponent(linkParam.slice(9));
+            linkParam = null;
         }
 
         el.innerHTML = `
@@ -562,9 +625,9 @@ const App = {
             <div class="filter-bar">
                 <input type="text" id="app-search" placeholder="Search company or bank..." />
                 <select id="filter-status"><option value="">All Status</option>
-                    <option>IN FORCE</option><option>SETTLED</option><option>DONE</option><option>IN PROGRESS</option><option>PENDING</option><option>ON HOLD</option><option>HOLD</option><option>REVIEW BY HOD</option>
+                    <option>IN FORCE</option><option>DISCHARGED</option><option>DONE</option><option>IN PROGRESS</option><option>PENDING</option><option>ON HOLD</option><option>REVIEW BY HOD</option>
                     <option>PREPARATION DOC BY FINANCE</option><option>SUBMISSION DOC TO BANK</option>
-                    <option>DECLINED</option><option>DECLINED BY BANK</option><option>DECLINED BY COMPANY</option>
+                    <option>DECLINED</option><option>DECLINED BY BANK</option><option>DECLINED BY COMPANY</option><option>CANCELLED BY BANK</option>
                 </select>
                 <select id="filter-bank"><option value="">All Banks</option>
                     ${bankNames.map(b => `<option>${b}</option>`).join('')}
@@ -579,6 +642,14 @@ const App = {
                 ${collateralFilter ? `
                 <span class="badge done" style="margin-left:8px;cursor:pointer" id="btn-clear-collateral-filter">
                     Collateral: ${collateralFilter.name} &times;
+                </span>` : ''}
+                ${statusGroupFilter ? `
+                <span class="badge done" style="margin-left:8px;cursor:pointer" id="btn-clear-status-filter">
+                    ${statusGroupLabel} &times;
+                </span>` : ''}
+                ${facilityFilter ? `
+                <span class="badge done" style="margin-left:8px;cursor:pointer" id="btn-clear-facility-filter">
+                    Facility: ${facilityFilter} &times;
                 </span>` : ''}
             </div>
             <div class="card">
@@ -647,10 +718,10 @@ const App = {
                             </div>
                             <div class="form-group"><label>Status</label>
                                 <select name="status" required>
-                                    <option>IN FORCE</option><option>SETTLED</option><option>IN PROGRESS</option><option>DONE</option><option>PENDING</option><option>ON HOLD</option><option>HOLD</option>
+                                    <option>IN FORCE</option><option>DISCHARGED</option><option>IN PROGRESS</option><option>DONE</option><option>PENDING</option><option>ON HOLD</option>
                                     <option>REVIEW BY HOD</option>
                                     <option>PREPARATION DOC BY FINANCE</option><option>SUBMISSION DOC TO BANK</option>
-                                    <option>DECLINED</option><option>DECLINED BY BANK</option><option>DECLINED BY COMPANY</option>
+                                    <option>DECLINED</option><option>DECLINED BY BANK</option><option>DECLINED BY COMPANY</option><option>CANCELLED BY BANK</option>
                                 </select>
                             </div>
                             <div class="form-group"><label>Application Details</label><textarea name="app_details" rows="2"></textarea></div>
@@ -677,6 +748,30 @@ const App = {
                                 <label>Decline Reason</label>
                                 <input name="decline_reason" placeholder="Why was this declined?" />
                             </div>
+                            <div class="form-group" id="discharge-note-group" style="display:none">
+                                <label>Discharged Note</label>
+                                <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-2);font-weight:500">
+                                    <input type="checkbox" name="discharge_note" style="width:auto" /> Yes — discharged note issued
+                                </label>
+                            </div>
+                            <div class="form-group" id="cancel-reason-group" style="display:none">
+                                <label>Cancellation Reason (Bank)</label>
+                                <input name="cancel_reason" placeholder="Why did the bank cancel this facility?" />
+                            </div>
+                            <div class="officers-section" id="officers-section">
+                                <div class="officers-head" id="officers-toggle">
+                                    <div class="officers-head-left">
+                                        <svg class="officers-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                                        Officers
+                                        <span class="officers-count" id="officers-count">0</span>
+                                    </div>
+                                    <button type="button" class="btn-secondary btn-xs" id="btn-add-officer">Add Officer</button>
+                                </div>
+                                <div class="officers-body">
+                                    <div id="officers-list"></div>
+                                    <p class="officers-empty" id="officers-empty">No officers added yet.</p>
+                                </div>
+                            </div>
                             <div class="form-group"><label>Notes</label><textarea name="notes" rows="2"></textarea></div>
                         </div>
                         <div class="modal-footer">
@@ -688,6 +783,19 @@ const App = {
             </div>
 
             `;
+
+        // Apply bank/company drill-down presets (after form fields exist)
+        if (linkParam && linkParam.startsWith('bank:')) {
+            const name = decodeURIComponent(linkParam.slice(5));
+            const sel = document.getElementById('filter-bank');
+            if (sel) sel.value = name;
+            linkParam = null;
+        } else if (linkParam && linkParam.startsWith('company:')) {
+            const name = decodeURIComponent(linkParam.slice(8));
+            const sf = document.getElementById('app-search');
+            if (sf) sf.value = name;
+            linkParam = null;
+        }
 
         let editingId = null;
         const loadApps = async () => {
@@ -704,7 +812,17 @@ const App = {
             if (category) filters.category = category;
             if (collateralFilter) filters.collateral_id = collateralFilter.id;
 
-            const apps = await DB.fetchApplications(filters);
+            let apps = await DB.fetchApplications(filters);
+            // Display order (top -> bottom): others, IN FORCE, hold, then declined last.
+            const statusRank = (s) => {
+                if (['DECLINED', 'DECLINED BY BANK', 'DECLINED BY COMPANY'].includes(s)) return 4;
+                if (['ON HOLD', 'HOLD', 'PENDING', 'REVIEW BY HOD', 'REVIEW BY BOS'].includes(s)) return 3;
+                if (s === 'IN FORCE') return 2;
+                return 1;
+            };
+            apps.sort((a, b) => statusRank(a.status) - statusRank(b.status));
+            if (statusGroupFilter) apps = apps.filter(a => statusGroupFilter.includes(a.status));
+            if (facilityFilter) apps = apps.filter(a => (a.type_facility || '') === facilityFilter);
             const container = document.getElementById('apps-table-container');
             container.innerHTML = '';
             const table = UI.renderTable(apps,
@@ -719,8 +837,10 @@ const App = {
                     { label: 'Fixed Deposit', render: (v, r) => r.fixed_deposit ? `<span style="font-family:var(--font-mono);font-size:11px">${r.fixed_deposit}</span>` : '-' },
                     { label: 'Status', render: (v, r) => UI.statusBadge(r.status) },
                     { label: 'Reason', render: (v, r) => {
-                        if (['ON HOLD','HOLD','PENDING','PREPARATION DOC BY FINANCE','SUBMISSION DOC TO BANK'].includes(r.status)) return r.hold_reason || '-';
+                        if (['ON HOLD','PENDING','PREPARATION DOC BY FINANCE','SUBMISSION DOC TO BANK'].includes(r.status)) return r.hold_reason || '-';
                         if (['DECLINED','DECLINED BY BANK','DECLINED BY COMPANY'].includes(r.status)) return r.decline_reason || '-';
+                        if (r.status === 'CANCELLED BY BANK') return r.cancel_reason || '-';
+                        if (r.status === 'DISCHARGED' || r.status === 'SETTLED') return r.discharge_note ? 'Discharge note issued' : '-';
                         return '-';
                     }},
                     { label: 'Progress', render: (v, r) => UI.progressHtml(r.progress, r.status) }
@@ -741,17 +861,9 @@ const App = {
                     delBtn.className = 'btn-danger btn-xs';
                     delBtn.innerHTML = App.icons.trash;
                     delBtn.title = 'Delete';
-                    delBtn.onclick = () => deleteApp(row.id);
+                    delBtn.onclick = () => deleteApp(row);
                     div.appendChild(viewBtn);
                     div.appendChild(editBtn);
-                    if (row.status === 'HOLD' || row.status === 'PENDING') {
-                        const hodBtn = document.createElement('button');
-                        hodBtn.className = 'btn-primary btn-xs';
-                        hodBtn.textContent = 'HOD';
-                        hodBtn.title = 'Send to HOD Review';
-                        hodBtn.onclick = () => sendToHod(row);
-                        div.appendChild(hodBtn);
-                    }
                     div.appendChild(delBtn);
                     return div;
                 }
@@ -811,7 +923,7 @@ const App = {
                         </div>` : ''}
                         ${(() => {
                             const isDeclined = row.status === 'DECLINED' || row.status === 'DECLINED BY BANK' || row.status === 'DECLINED BY COMPANY';
-                            const holdStatuses = ['ON HOLD','HOLD','PENDING','PREPARATION DOC BY FINANCE','SUBMISSION DOC TO BANK'];
+                            const holdStatuses = ['ON HOLD','PENDING','PREPARATION DOC BY FINANCE','SUBMISSION DOC TO BANK'];
                             const isHold = holdStatuses.includes(row.status);
                             if (isDeclined && row.decline_reason) return `
                             <div class="detail-section" style="color:var(--red)">Decline Info</div>
@@ -823,7 +935,31 @@ const App = {
                             <div class="detail-grid">
                                 <div class="detail-group"><div class="detail-label">${row.status}</div><div class="detail-value" style="color:var(--amber)">${row.hold_reason}</div></div>
                             </div>`;
+                            if (row.status === 'CANCELLED BY BANK' && row.cancel_reason) return `
+                            <div class="detail-section" style="color:var(--red)">Cancellation Info</div>
+                            <div class="detail-grid">
+                                <div class="detail-group"><div class="detail-label">Cancelled by Bank — Reason</div><div class="detail-value" style="color:var(--red)">${row.cancel_reason}</div></div>
+                            </div>`;
+                            if ((row.status === 'DISCHARGED' || row.status === 'SETTLED') && row.discharge_note) return `
+                            <div class="detail-section">Discharge Info</div>
+                            <div class="detail-grid">
+                                <div class="detail-group"><div class="detail-label">Discharged Note</div><div class="detail-value">Issued</div></div>
+                            </div>`;
                             return '';
+                        })()}
+                        ${(() => {
+                            let officers = row.officers;
+                            if (typeof officers === 'string' && officers) { try { officers = JSON.parse(officers); } catch (_) { officers = []; } }
+                            if (!Array.isArray(officers) || officers.length === 0) return '';
+                            return `
+                            <div class="detail-section">Officers</div>
+                            <div class="detail-grid">
+                                ${officers.map(o => `
+                                <div class="detail-group">
+                                    <div class="detail-label">${o.name || '-'}${o.office ? ' · ' + o.office : ''}</div>
+                                    <div class="detail-value">${o.position || '-'}${o.contact ? ' · ' + o.contact : ''}</div>
+                                </div>`).join('')}
+                            </div>`;
                         })()}
                         ${row.notes ? `
                         <div class="detail-section">Notes</div>
@@ -848,6 +984,7 @@ const App = {
             const isStandard = selectOptions.includes(row.type_facility);
             
             let rowData = { ...row };
+            if (rowData.status === 'SETTLED') rowData.status = 'DISCHARGED';
             if (row.type_facility && !isStandard) {
                 rowData.type_facility = 'OTHERS';
                 rowData.type_facility_custom = row.type_facility;
@@ -863,80 +1000,23 @@ const App = {
             
             const statusSelect = document.querySelector('#app-form [name="status"]');
             statusSelect.dispatchEvent(new Event('change'));
+            const dischargeCb = document.querySelector('#app-form [name="discharge_note"]');
+            if (dischargeCb) dischargeCb.checked = rowData.discharge_note === true || rowData.discharge_note === 'true';
+            setOfficers(parseOfficers(row.officers));
             UI.openModal('modal-app');
         };
 
-        const deleteApp = async (id) => {
+        const deleteApp = async (row) => {
             const confirmed = await UI.confirmDialog('Are you sure you want to delete this application? This action cannot be undone.', 'Delete Application');
             if (!confirmed) return;
             try {
-                await DB.deleteApplication(id);
-                UI.showToast('Application deleted successfully', 'success');
+                const res = await DB.saveChange('application', 'DELETE', row.id, {},
+                    `Delete application: ${row.company || '-'} — ${row.type_facility || '-'}`);
+                UI.showToast(res.queued ? 'Deletion submitted for HOD review' : 'Application deleted successfully', 'success');
                 loadApps();
             } catch (err) {
                 UI.showToast('Error deleting: ' + err.message, 'error');
             }
-        };
-
-        const sendToHod = async (row) => {
-            const confirmed = await UI.confirmDialog(`Send "${row.company} - ${row.type_facility}" to HOD Review? This will navigate to the HOD Review page.`, 'Send to HOD');
-            if (!confirmed) return;
-            const banks = await DB.fetchBanks();
-            const bankNames = banks.map(b => b.name);
-            const overlay = document.createElement('div');
-            overlay.className = 'modal-overlay open';
-            overlay.innerHTML = `
-                <div class="modal" style="max-width:480px">
-                    <div class="modal-header">
-                        <h2>Send to HOD Review</h2>
-                        <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">&times;</button>
-                    </div>
-                    <form id="bos-send-form" onsubmit="return false">
-                        <div class="modal-body">
-                            <div class="form-group"><label>Bank</label>
-                                <select name="bank_name" required>
-                                    <option value="">Select bank</option>
-                                    ${bankNames.map(b => `<option ${b === row.bank ? 'selected' : ''}>${b}</option>`).join('')}
-                                </select>
-                            </div>
-                            <div class="form-row">
-                                <div class="form-group"><label>Type of Facility</label><input name="type_facility" value="${row.type_facility || ''}" required /></div>
-                                <div class="form-group"><label>Name of Facility</label><input name="name_facility" value="${row.name_facility || ''}" /></div>
-                            </div>
-                            <div class="form-row">
-                                <div class="form-group"><label>Profit Rate</label><input name="profit_rate" value="${row.profit_rate || ''}" /></div>
-                                <div class="form-group"><label>Tenure</label><input name="tenure" value="${row.rate_tenure || ''}" /></div>
-                            </div>
-                            <div class="form-row">
-                                <div class="form-group"><label>Collateral</label><input name="collateral" value="${row.collateral || ''}" /></div>
-                                <div class="form-group"><label>Total Offered (RM)</label><input type="number" name="total_offered" step="0.01" /></div>
-                            </div>
-                            <div class="form-group"><label>Notes</label><textarea name="notes" rows="2">From application: ${row.app_details || ''}</textarea></div>
-                        </div>
-                        <div class="modal-footer">
-                            <button type="button" class="btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
-                            <button type="submit" class="btn-primary" id="btn-send-bos">Send to HOD</button>
-                        </div>
-                    </form>
-                </div>`;
-            document.body.appendChild(overlay);
-            document.getElementById('bos-send-form').addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const data = UI.getFormData('bos-send-form');
-                const btn = document.getElementById('btn-send-bos');
-                btn.disabled = true;
-                btn.textContent = 'Sending...';
-                try {
-                    data.status = 'PENDING REVIEW';
-                    await DB.insertBosReview(data);
-                    await DB.updateApplication(row.id, { status: 'REVIEW BY HOD' });
-                    UI.showToast('Sent to HOD Review', 'success');
-                    overlay.remove();
-                    window.location.hash = 'bos_review';
-                } catch (err) { UI.showToast('Error: ' + err.message, 'error'); }
-                btn.disabled = false;
-                btn.textContent = 'Send to HOD';
-            });
         };
 
         const typeSelect = document.querySelector('#app-form [name="type_facility"]');
@@ -968,19 +1048,99 @@ const App = {
             'IN PROGRESS': 50,
             'PENDING': 0,
             'ON HOLD': 30,
-            'HOLD': 30,
             'REVIEW BY BOS': 80,
             'PREPARATION DOC BY FINANCE': 20,
             'SUBMISSION DOC TO BANK': 70,
             'DECLINED': 0,
             'DECLINED BY BANK': 0,
-            'DECLINED BY COMPANY': 0
+            'DECLINED BY COMPANY': 0,
+            'CANCELLED BY BANK': 0
         };
         document.querySelector('#app-form [name="status"]').addEventListener('change', (e) => {
-            const isHold = e.target.value === 'ON HOLD' || e.target.value === 'HOLD' || e.target.value === 'PENDING' || e.target.value === 'PREPARATION DOC BY FINANCE' || e.target.value === 'SUBMISSION DOC TO BANK';
+            const isHold = e.target.value === 'ON HOLD' || e.target.value === 'PENDING' || e.target.value === 'PREPARATION DOC BY FINANCE' || e.target.value === 'SUBMISSION DOC TO BANK';
             const isDeclined = e.target.value === 'DECLINED' || e.target.value === 'DECLINED BY BANK' || e.target.value === 'DECLINED BY COMPANY';
+            const isDischarged = e.target.value === 'DISCHARGED' || e.target.value === 'SETTLED';
+            const isCancelled = e.target.value === 'CANCELLED BY BANK';
             document.getElementById('hold-reason-group').style.display = isHold ? '' : 'none';
             document.getElementById('decline-reason-group').style.display = isDeclined ? '' : 'none';
+            document.getElementById('discharge-note-group').style.display = isDischarged ? '' : 'none';
+            document.getElementById('cancel-reason-group').style.display = isCancelled ? '' : 'none';
+        });
+
+        // Officers (collapsible, many per application)
+        const officersSection = document.getElementById('officers-section');
+        const officersList = document.getElementById('officers-list');
+        const officersCount = document.getElementById('officers-count');
+        const officersEmpty = document.getElementById('officers-empty');
+
+        const updateOfficerCount = () => {
+            const n = officersList.querySelectorAll('[data-officer]').length;
+            officersCount.textContent = n;
+            officersEmpty.style.display = n ? 'none' : '';
+        };
+
+        const addOfficerRow = (officer = {}) => {
+            const row = document.createElement('div');
+            row.className = 'officer-row';
+            row.setAttribute('data-officer', '');
+            row.innerHTML = `
+                <div class="officer-row-head">
+                    <span class="officer-row-title">Officer</span>
+                    <button type="button" class="btn-danger btn-xs" data-remove-officer>Remove</button>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Name</label><input data-field="name" placeholder="Officer name" /></div>
+                    <div class="form-group"><label>Position</label><input data-field="position" placeholder="e.g. Branch Manager" /></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Contact Number</label><input data-field="contact" placeholder="e.g. 012-3456789" /></div>
+                    <div class="form-group"><label>Office</label>
+                        <select data-field="office">
+                            <option value="">Select office</option>
+                            <option>HQ</option>
+                            <option>BRANCH</option>
+                        </select>
+                    </div>
+                </div>`;
+            row.querySelector('[data-field="name"]').value = officer.name || '';
+            row.querySelector('[data-field="position"]').value = officer.position || '';
+            row.querySelector('[data-field="contact"]').value = officer.contact || '';
+            row.querySelector('[data-field="office"]').value = officer.office || '';
+            row.querySelector('[data-remove-officer]').addEventListener('click', () => { row.remove(); updateOfficerCount(); });
+            officersList.appendChild(row);
+            updateOfficerCount();
+        };
+
+        const setOfficers = (arr) => {
+            officersList.innerHTML = '';
+            (Array.isArray(arr) ? arr : []).forEach(addOfficerRow);
+            updateOfficerCount();
+            officersSection.classList.toggle('open', officersList.children.length > 0);
+        };
+
+        const collectOfficers = () => {
+            const out = [];
+            officersList.querySelectorAll('[data-officer]').forEach(row => {
+                const val = (f) => row.querySelector(`[data-field="${f}"]`)?.value.trim() || '';
+                if (!val('name')) return;
+                out.push({ name: val('name'), position: val('position'), contact: val('contact'), office: val('office') });
+            });
+            return out;
+        };
+
+        const parseOfficers = (raw) => {
+            if (Array.isArray(raw)) return raw;
+            if (typeof raw === 'string' && raw) {
+                try { const p = JSON.parse(raw); return Array.isArray(p) ? p : []; } catch (_) { return []; }
+            }
+            return [];
+        };
+
+        document.getElementById('officers-toggle').addEventListener('click', () => officersSection.classList.toggle('open'));
+        document.getElementById('btn-add-officer').addEventListener('click', (e) => {
+            e.stopPropagation();
+            officersSection.classList.add('open');
+            addOfficerRow();
         });
 
         document.getElementById('btn-add-app').addEventListener('click', () => {
@@ -988,6 +1148,7 @@ const App = {
             document.getElementById('modal-app-title').textContent = 'New Application';
             document.getElementById('btn-save-app').textContent = 'Save Application';
             UI.resetForm('app-form');
+            setOfficers([]);
             if (typeSelect) {
                 typeSelect.dispatchEvent(new Event('change'));
             }
@@ -1013,23 +1174,17 @@ const App = {
                 }
             }
             data.progress = progressMap[data.status] !== undefined ? progressMap[data.status] : 0;
+            const dischargeCb = document.querySelector('#app-form [name="discharge_note"]');
+            data.discharge_note = !!(dischargeCb && dischargeCb.checked);
+            data.officers = collectOfficers();
             const btn = document.getElementById('btn-save-app');
             btn.disabled = true;
             btn.textContent = 'Saving...';
             try {
-                if (data.company) {
-                    const exists = dbCompanies.some(c => c.name.toLowerCase() === data.company.toLowerCase());
-                    if (!exists) {
-                        await DB.insertCompany(data.company);
-                    }
-                }
-                if (editingId) {
-                    await DB.updateApplication(editingId, data);
-                    UI.showToast('Application updated successfully', 'success');
-                } else {
-                    await DB.insertApplication(data);
-                    UI.showToast('Application added successfully', 'success');
-                }
+                const isEdit = !!editingId;
+                const summary = `${isEdit ? 'Edit' : 'New'} application: ${data.company || '-'} — ${data.type_facility || '-'}${data.bank ? ' (' + data.bank + ')' : ''}`;
+                const res = await DB.saveChange('application', isEdit ? 'UPDATE' : 'CREATE', editingId, data, summary);
+                UI.showToast(res.queued ? 'Submitted for HOD review' : (isEdit ? 'Application updated successfully' : 'Application added successfully'), 'success');
                 UI.closeModal('modal-app');
                 loadApps();
             } catch (err) {
@@ -1044,17 +1199,27 @@ const App = {
             document.getElementById(id)?.addEventListener('change', loadApps);
         });
 
-        // A
-        if (companyFilter && !companyFilter.startsWith('collateral:')) {
+        // Navigated from companies page: raw company name → search field
+        if (linkParam) {
             const searchField = document.getElementById('app-search');
             if (searchField) {
-                searchField.value = decodeURIComponent(companyFilter);
+                searchField.value = decodeURIComponent(linkParam);
             }
         }
 
         // Clear collateral filter badge
         document.getElementById('btn-clear-collateral-filter')?.addEventListener('click', () => {
             collateralFilter = null;
+            window.location.hash = 'applications';
+        });
+
+        // Clear dashboard status drill-down badge
+        document.getElementById('btn-clear-status-filter')?.addEventListener('click', () => {
+            window.location.hash = 'applications';
+        });
+
+        // Clear facility drill-down badge
+        document.getElementById('btn-clear-facility-filter')?.addEventListener('click', () => {
             window.location.hash = 'applications';
         });
 
@@ -1196,7 +1361,7 @@ const App = {
                     if (!id) return;
                     const company = dbCompanies.find(c => c.id === id);
                     if (!company) return;
-                    const terminalStatuses = ['IN FORCE', 'DONE', 'SETTLED', 'DECLINED', 'DECLINED BY BANK', 'DECLINED BY COMPANY', 'DECLINED BY BOSS'];
+                    const terminalStatuses = ['IN FORCE', 'DONE', 'DISCHARGED', 'SETTLED', 'DECLINED', 'DECLINED BY BANK', 'DECLINED BY COMPANY', 'DECLINED BY BOSS', 'CANCELLED BY BANK'];
                     const companyApps = (stats.apps || []).filter(a => a.company?.toLowerCase() === company.name.toLowerCase());
                     const hasNonTerminal = companyApps.some(a => !terminalStatuses.includes(a.status));
                     if (hasNonTerminal) {
@@ -1206,8 +1371,8 @@ const App = {
                     const confirmed = await UI.confirmDialog(`Delete "${company.name}"?`, 'Delete Company');
                     if (!confirmed) return;
                     try {
-                        await DB.deleteCompany(id);
-                        UI.showToast('Company deleted', 'success');
+                        const res = await DB.saveChange('company', 'DELETE', id, {}, `Delete company: ${company.name}`);
+                        UI.showToast(res.queued ? 'Company deletion submitted for HOD review' : 'Company deleted', 'success');
                         App.renderCompanies(el);
                     } catch (err) {
                         UI.showToast('Error deleting company: ' + err.message, 'error');
@@ -1231,9 +1396,9 @@ const App = {
                     return;
                 }
                 try {
-                    await DB.insertCompany(companyName);
+                    const res = await DB.saveChange('company', 'CREATE', null, { name: companyName }, `New company: ${companyName}`);
                     UI.closeModal('modal-add-company-page');
-                    UI.showToast(`Company "${companyName}" added`, 'success');
+                    UI.showToast(res.queued ? `Company "${companyName}" submitted for HOD review` : `Company "${companyName}" added`, 'success');
                     App.renderCompanies(el);
                 } catch (err) {
                     UI.showToast('Error adding company: ' + err.message, 'error');
@@ -1342,8 +1507,8 @@ const App = {
             const confirmed = await UI.confirmDialog(`Delete bank "${row.name}"? This action cannot be undone.`, 'Delete Bank');
             if (!confirmed) return;
             try {
-                await DB.deleteBank(row.id);
-                UI.showToast('Bank deleted successfully', 'success');
+                const res = await DB.saveChange('bank', 'DELETE', row.id, {}, `Delete bank: ${row.name}`);
+                UI.showToast(res.queued ? 'Bank deletion submitted for HOD review' : 'Bank deleted successfully', 'success');
                 App.renderBanks(el);
             } catch (err) {
                 UI.showToast('Error deleting bank: ' + err.message, 'error');
@@ -1359,13 +1524,9 @@ const App = {
             btn.disabled = true;
             btn.textContent = 'Saving...';
             try {
-                if (editingBankId) {
-                    await DB.updateBank(editingBankId, data);
-                    UI.showToast('Bank updated successfully', 'success');
-                } else {
-                    await DB.insertBank(data);
-                    UI.showToast('Bank added successfully', 'success');
-                }
+                const res = await DB.saveChange('bank', editingBankId ? 'UPDATE' : 'CREATE', editingBankId, data,
+                    `${editingBankId ? 'Edit' : 'New'} bank: ${data.name || '-'}${data.bfr_current ? ' (BFR ' + data.bfr_current + '%)' : ''}`);
+                UI.showToast(res.queued ? 'Bank change submitted for HOD review' : (editingBankId ? 'Bank updated successfully' : 'Bank added successfully'), 'success');
                 UI.closeModal('modal-bank');
                 App.renderBanks(el);
             } catch (err) {
@@ -1378,14 +1539,74 @@ const App = {
         renderBankTable();
     },
 
+    buildReportInsights(stats) {
+        const holdStatuses = ['ON HOLD', 'PENDING', 'REVIEW BY HOD', 'REVIEW BY BOS'];
+        const insights = [];
+
+        const declineEntries = Object.entries(stats.declineReasons || {}).sort((a, b) => b[1] - a[1]);
+        const declineTotal = declineEntries.reduce((s, [, c]) => s + c, 0);
+        insights.push({
+            tag: 'Factor 01',
+            title: 'Declined Applications',
+            value: declineTotal > 0 ? `${declineTotal} Declined` : 'No Declines',
+            reason: declineEntries.length
+                ? declineEntries.map(([r, c]) => `${r} (${c})`).join(' · ')
+                : 'No decline reason recorded'
+        });
+
+        const holdMap = {};
+        (stats.apps || []).forEach(a => {
+            if (holdStatuses.includes(a.status)) {
+                const r = (a.hold_reason || 'No reason stated').trim();
+                holdMap[r] = (holdMap[r] || 0) + 1;
+            }
+        });
+        const holdEntries = Object.entries(holdMap).sort((a, b) => b[1] - a[1]);
+        const holdTotal = holdEntries.reduce((s, [, c]) => s + c, 0);
+        insights.push({
+            tag: 'Factor 02',
+            title: 'On-Hold & Pending',
+            value: holdTotal > 0 ? `${holdTotal} On Hold` : 'None On Hold',
+            reason: holdEntries.length
+                ? holdEntries.map(([r, c]) => `${r} (${c})`).join(' · ')
+                : 'No hold reason recorded'
+        });
+
+        const stuck = [...(stats.stuckApps || [])].sort((a, b) => b.days_stuck - a.days_stuck);
+        const topStuck = stuck[0];
+        insights.push({
+            tag: 'Factor 03',
+            title: 'SLA Bottleneck (>14 Days)',
+            value: stuck.length > 0 ? `${stuck.length} Stuck` : 'No Bottleneck',
+            reason: topStuck
+                ? `${topStuck.company || '-'} — ${topStuck.days_stuck} days — ${topStuck.hold_reason || topStuck.decline_reason || topStuck.app_details || topStuck.status || 'No reason stated'}`
+                : `Average SLA ${stats.avgSlaDays} days`
+        });
+
+        const risk = stats.topCompanyRisk || { name: '-', percent: 0, requested: 0 };
+        insights.push({
+            tag: 'Factor 04',
+            title: 'Concentration Risk',
+            value: risk.percent ? `${risk.percent}% Exposure` : 'Low',
+            reason: risk.percent >= 30
+                ? `Single-client exposure above 30% threshold — ${risk.name} (${UI.formatCurrency(risk.requested)})`
+                : (risk.name && risk.name !== '-' ? `Largest client exposure — ${risk.name} (${risk.percent}%)` : 'No dominant client exposure')
+        });
+
+        return insights;
+    },
+
     async renderReports(el) {
         const stats = await DB.getDashboardStats();
         const { bankStats } = await DB.getBankStats(stats.apps);
+        const insights = this.buildReportInsights(stats);
+        const insightColors = ['#dc2626', '#d97706', '#2563eb', '#8b5cf6'];
         const overallRate = stats.totalRequested > 0 ? Math.round((stats.totalApproved / stats.totalRequested) * 100) : 0;
         const stuckCount = stats.stuckApps ? stats.stuckApps.length : 0;
         const hasRiskConcentration = stats.topCompanyRisk && stats.topCompanyRisk.percent > 30;
 
         el.innerHTML = `
+            <div class="report-wrap" style="text-transform:uppercase">
             <div class="module-header-bar">
                 <div class="module-title-wrap">
                     <h2>Reports & Executive Analytics</h2>
@@ -1448,6 +1669,24 @@ const App = {
                 </div>
             </div>
 
+            <div class="card" style="margin-bottom:24px">
+                <div class="card-header"><div class="card-header-title">Key Factors &amp; Highlighted Issues</div></div>
+                <div class="card-body">
+                    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px">
+                        ${insights.map((ins, i) => `
+                        <div style="border:1px solid var(--border);border-left:3px solid ${insightColors[i]};border-radius:10px;padding:14px">
+                            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px">
+                                <span style="font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--text-3)">${ins.tag}</span>
+                                <span style="font-size:15px;font-weight:800;font-family:var(--font-mono);color:${insightColors[i]}">${ins.value}</span>
+                            </div>
+                            <div style="font-size:13px;font-weight:700;color:var(--text-1);margin-bottom:8px">${ins.title}</div>
+                            <div style="font-size:10px;font-weight:700;letter-spacing:.06em;color:var(--text-3);margin-bottom:3px">Reason</div>
+                            <div style="font-size:12px;color:var(--text-2);line-height:1.5">${ins.reason}</div>
+                        </div>`).join('')}
+                    </div>
+                </div>
+            </div>
+
             <div class="grid-2" style="margin-bottom:24px">
                 <div class="card"><div class="card-header"><div class="card-header-title">Applications Trend by Year</div></div><div class="card-body"><div class="chart-container" id="chart-year"></div></div></div>
                 <div class="card"><div class="card-header"><div class="card-header-title">Facility Type Distribution</div></div><div class="card-body"><div class="chart-container" id="chart-facility"></div></div></div>
@@ -1491,10 +1730,13 @@ const App = {
                 </div>
                 <div class="card-body" id="stuck-apps-table"></div>
             </div>
-            ` : ''}`;
+            ` : ''}
+            </div>`;
 
         Charts.barYearTrend('chart-year', stats.yearCounts);
-        Charts.donutFacility('chart-facility', stats.facilityCounts);
+        Charts.donutFacility('chart-facility', stats.facilityCounts, (p) => {
+            if (p && p.name) window.location.hash = 'applications|facility:' + encodeURIComponent(p.name);
+        });
 
         const entries = Object.entries(bankStats || {}).filter(([, v]) => v.count > 0).sort((a, b) => b[1].requested - a[1].requested);
         const container = document.getElementById('bank-summary-table');
@@ -1546,6 +1788,7 @@ const App = {
 
                 const dateFile = new Date().toISOString().slice(0, 10);
                 const dateStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+                const U = (s) => String(s ?? '').toUpperCase();
 
                 const top5Banks = entries.slice(0, 5);
                 const bankRows = top5Banks.map(([name, s]) => {
@@ -1563,10 +1806,22 @@ const App = {
                 stats.apps.forEach(a => { const c = a.collateral || 'None'; collMap[c] = (collMap[c]||0)+1; });
                 const collRows = Object.entries(collMap).sort((a,b)=>b[1]-a[1]).map(([n,c]) => `<tr><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px"><b>${n}</b></td><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px;text-align:center">${c}</td></tr>`).join('');
 
+                const insightRows = insights.map((ins, i) =>
+                    '<tr>' +
+                    '<td style="padding:4px 6px;border:1px solid #ccc;font-size:9px;text-align:center;font-weight:700;color:#666">' + (i + 1) + '</td>' +
+                    '<td style="padding:4px 6px;border:1px solid #ccc;font-size:9px;text-align:left"><b>' + ins.title + '</b></td>' +
+                    '<td style="padding:4px 6px;border:1px solid #ccc;font-size:9px;text-align:center;font-weight:700;color:#2563eb">' + ins.value + '</td>' +
+                    '<td style="padding:4px 6px;border:1px solid #ccc;font-size:9px;text-align:left">' + ins.reason + '</td>' +
+                    '</tr>').join('');
+
+                const declineDetailRows = Object.entries(stats.declineReasons || {}).sort((a, b) => b[1] - a[1])
+                    .map(([reason, count]) => '<tr><td style="padding:4px 6px;border:1px solid #ccc;font-size:9px">' + reason + '</td><td style="padding:4px 6px;border:1px solid #ccc;font-size:9px;text-align:center">' + count + '</td></tr>').join('')
+                    || '<tr><td style="padding:4px 6px;border:1px solid #ccc;font-size:9px" colspan="2">No decline reason recorded</td></tr>';
+
                 const el = document.createElement('div');
-                el.innerHTML = '<div style="font-family:sans-serif;color:#000;padding:20px;font-size:11px;line-height:1.4;width:760px">' +
+                el.innerHTML = '<div style="font-family:sans-serif;color:#0f172a;padding:20px;font-size:11px;line-height:1.4;width:760px;text-transform:uppercase">' +
                     '<div style="display:flex;justify-content:space-between;padding-bottom:10px;border-bottom:2px solid #000;margin-bottom:14px">' +
-                    '<div><div style="font-size:18px;font-weight:800">KAK EFA FACILITIES MANAGEMENT</div><div style="font-size:10px;font-weight:700;color:#2563eb;text-transform:uppercase;margin-top:2px">Board-Ready Executive Summary</div></div>' +
+                    '<div><div style="font-size:18px;font-weight:800">FM DATA</div><div style="font-size:10px;font-weight:700;color:#2563eb;text-transform:uppercase;margin-top:2px">Board-Ready Executive Summary</div></div>' +
                     '<div style="text-align:right;font-size:10px;color:#555">Date: <b>'+dateStr+'</b><br>Classification: <b>Board Confidential</b></div></div>' +
 
                     '<div style="font-size:11px;font-weight:800;text-transform:uppercase;margin-bottom:8px">Key Executive Metrics</div>' +
@@ -1575,6 +1830,14 @@ const App = {
                     '<td style="border:1px solid #ccc;padding:8px;width:25%"><div style="font-size:9px;font-weight:700;color:#666;text-transform:uppercase">Avg SLA</div><div style="font-size:16px;font-weight:800;margin-top:2px">'+stats.avgSlaDays+'d</div></td>' +
                     '<td style="border:1px solid #ccc;padding:8px;width:25%"><div style="font-size:9px;font-weight:700;color:#666;text-transform:uppercase">Total Approved</div><div style="font-size:16px;font-weight:800;margin-top:2px;color:green">'+UI.formatCurrency(stats.totalApproved)+'</div></td>' +
                     '<td style="border:1px solid #ccc;padding:8px;width:25%"><div style="font-size:9px;font-weight:700;color:#666;text-transform:uppercase">Total Requested</div><div style="font-size:16px;font-weight:800;margin-top:2px">'+UI.formatCurrency(stats.totalRequested)+'</div></td></tr></table>' +
+
+                    '<div style="font-size:11px;font-weight:800;text-transform:uppercase;margin-bottom:8px;margin-top:14px">Key Factors & Highlighted Issues</div>' +
+                    '<table style="width:100%;border-collapse:collapse;margin-bottom:14px"><thead><tr style="background:#f1f5f9">' +
+                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-align:center;width:24px">#</th>' +
+                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-align:left;width:150px">Factor / Issue</th>' +
+                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-align:center;width:90px">Observation</th>' +
+                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-align:left">Reason</th></tr></thead><tbody>' +
+                    insightRows + '</tbody></table>' +
 
                     '<div style="font-size:11px;font-weight:800;text-transform:uppercase;margin-bottom:8px;margin-top:14px">Top Partner Bank SLA & Performance Ranking</div>' +
                     '<table style="width:100%;border-collapse:collapse;margin-bottom:14px"><thead><tr style="background:#f1f5f9">' +
@@ -1595,11 +1858,11 @@ const App = {
                     '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:center">Applications</th></tr></thead><tbody>' +
                     collRows + '</tbody></table>' +
 
-                    '<div style="margin-top:20px;padding-top:8px;border-top:1px solid #ccc;font-size:9px;color:#999">Kak Efa Facilities Management — Page 1 of 2</div>' +
+                    '<div style="margin-top:20px;padding-top:8px;border-top:1px solid #ccc;font-size:9px;color:#999">FM Data — Page 1 of 2</div>' +
                     '<div style="page-break-before:always;height:20px"></div>' +
 
                     '<div style="display:flex;justify-content:space-between;padding-bottom:10px;border-bottom:2px solid #000;margin-bottom:14px">' +
-                    '<div><div style="font-size:18px;font-weight:800">KAK EFA FACILITIES MANAGEMENT</div><div style="font-size:10px;font-weight:700;color:#2563eb;text-transform:uppercase;margin-top:2px">Monthly Trajectory & Bottleneck Analysis</div></div>' +
+                    '<div><div style="font-size:18px;font-weight:800">FM DATA</div><div style="font-size:10px;font-weight:700;color:#2563eb;text-transform:uppercase;margin-top:2px">Monthly Trajectory & Bottleneck Analysis</div></div>' +
                     '<div style="text-align:right;font-size:10px;color:#555">Date: <b>'+dateStr+'</b></div></div>' +
 
                     '<div style="font-size:11px;font-weight:800;text-transform:uppercase;margin-bottom:8px">Monthly Performance Trajectory</div>' +
@@ -1612,7 +1875,13 @@ const App = {
                     '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:right">Approved (RM)</th>' +
                     '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:right">Approval %</th></tr></thead><tbody>' +
                     monthlyRows + '</tbody></table>' +
-                    '<div style="margin-top:20px;padding-top:8px;border-top:1px solid #ccc;font-size:9px;color:#999">Kak Efa Facilities Management — Page 2 of 2</div>' +
+
+                    '<div style="font-size:11px;font-weight:800;text-transform:uppercase;margin-bottom:8px;margin-top:14px">Decline Reasons Breakdown</div>' +
+                    '<table style="width:100%;border-collapse:collapse;margin-bottom:14px"><thead><tr style="background:#f1f5f9">' +
+                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-align:left">Reason</th>' +
+                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-align:center;width:80px">Count</th></tr></thead><tbody>' +
+                    declineDetailRows + '</tbody></table>' +
+                    '<div style="margin-top:20px;padding-top:8px;border-top:1px solid #ccc;font-size:9px;color:#999">FM Data — Page 2 of 2</div>' +
                 '</div>';
 
                 el.style.cssText = 'position:fixed;left:0;top:0;width:800px;background:#fff;z-index:9999';
@@ -1638,7 +1907,7 @@ const App = {
                     pdf.addImage(imgData, 'JPEG', 0, position, pdfW, pdfH);
                     heightLeft -= pdf.internal.pageSize.getHeight();
                 }
-                pdf.save('KakEfa_Report_' + dateFile + '.pdf');
+                pdf.save('FMData_Report_' + dateFile + '.pdf');
                 UI.showToast('PDF report downloaded', 'success');
             } catch (err) {
                 UI.showToast('PDF error: ' + err.message, 'error');
@@ -1660,7 +1929,7 @@ const App = {
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `kakefa_export_${new Date().toISOString().slice(0, 10)}.csv`;
+                a.download = `fmdata_export_${new Date().toISOString().slice(0, 10)}.csv`;
                 a.click();
                 URL.revokeObjectURL(url);
                 UI.showToast('Data exported successfully', 'success');
@@ -1779,8 +2048,8 @@ const App = {
                     const confirmed = await UI.confirmDialog(`Delete collateral "${c.name}"? Applications using this collateral will be unlinked.`, 'Delete Collateral');
                     if (!confirmed) return;
                     try {
-                        await DB.deleteCollateral(id);
-                        UI.showToast('Collateral deleted', 'success');
+                        const res = await DB.saveChange('collateral', 'DELETE', id, {}, `Delete collateral: ${c.name}`);
+                        UI.showToast(res.queued ? 'Collateral deletion submitted for HOD review' : 'Collateral deleted', 'success');
                         App.renderCollaterals(el);
                     } catch (err) {
                         UI.showToast('Error: ' + err.message, 'error');
@@ -1817,13 +2086,9 @@ const App = {
                 btn.disabled = true;
                 btn.textContent = 'Saving...';
                 try {
-                    if (editingCollateralId) {
-                        await DB.updateCollateral(editingCollateralId, data);
-                        UI.showToast('Collateral updated', 'success');
-                    } else {
-                        await DB.insertCollateral(data);
-                        UI.showToast('Collateral added', 'success');
-                    }
+                    const res = await DB.saveChange('collateral', editingCollateralId ? 'UPDATE' : 'CREATE', editingCollateralId, data,
+                        `${editingCollateralId ? 'Edit' : 'New'} collateral: ${data.name || '-'}`);
+                    UI.showToast(res.queued ? 'Collateral change submitted for HOD review' : (editingCollateralId ? 'Collateral updated' : 'Collateral added'), 'success');
                     UI.closeModal('modal-collateral');
                     App.renderCollaterals(el);
                 } catch (err) {
@@ -1948,7 +2213,7 @@ const App = {
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `kakefa_export_${new Date().toISOString().slice(0,10)}.csv`;
+                a.download = `fmdata_export_${new Date().toISOString().slice(0,10)}.csv`;
                 a.click();
                 URL.revokeObjectURL(url);
                 UI.showToast('Data exported successfully','success');
@@ -2103,17 +2368,76 @@ const App = {
             } catch (err) { UI.showToast('Error: ' + err.message, 'error'); }
         };
 
+        App.approveChangeRequest = async (id) => {
+            if (!Auth.isSuperAdmin()) { UI.showToast('Only HOD can approve changes', 'error'); return; }
+            try {
+                await DB.approveChangeRequest(id);
+                UI.showToast('Change approved and applied', 'success');
+                loadBos();
+            } catch (err) { UI.showToast('Error approving: ' + err.message, 'error'); }
+        };
+
+        App.rejectChangeRequest = async (id) => {
+            if (!Auth.isSuperAdmin()) { UI.showToast('Only HOD can reject changes', 'error'); return; }
+            try {
+                await DB.rejectChangeRequest(id);
+                UI.showToast('Change rejected', 'success');
+                loadBos();
+            } catch (err) { UI.showToast('Error rejecting: ' + err.message, 'error'); }
+        };
+
+        App.deleteChangeRequest = async (id) => {
+            if (!Auth.isSuperAdmin()) return;
+            const confirmed = await UI.confirmDialog('Delete this change request?', 'Delete Request');
+            if (!confirmed) return;
+            try {
+                await DB.deleteChangeRequest(id);
+                UI.showToast('Request deleted', 'success');
+                loadBos();
+            } catch (err) { UI.showToast('Error: ' + err.message, 'error'); }
+        };
+
         const loadBos = async () => {
+            const isSuperAdmin = Auth.isSuperAdmin();
             const reviews = await DB.fetchBosReviews();
+            const changes = await DB.fetchChangeRequests();
+            const pendingChanges = changes.filter(c => (c.status || 'PENDING') === 'PENDING');
             const pendingCount = reviews.filter(r => (r.status || 'PENDING REVIEW') === 'PENDING REVIEW').length;
+
+            const esc = (s) => String(s ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+            const fieldLabels = {
+                company: 'Company', bank: 'Bank', type_facility: 'Type of Facility', name_facility: 'Name of Facility',
+                category: 'Category', year_application: 'Year', bfr: 'BFR', profit_rate: 'Profit Rate', rate_tenure: 'Tenure',
+                status: 'Status', collateral: 'Collateral', total_requested: 'Total Requested', total_approved: 'Total Approved',
+                app_details: 'Details', hold_reason: 'Hold Reason', decline_reason: 'Decline Reason', cancel_reason: 'Cancellation Reason', discharge_note: 'Discharged Note', officers: 'Officers', annual_review: 'Annual Review',
+                name: 'Name', description: 'Description', bfr_current: 'BFR Current', bfr_previous: 'BFR Previous',
+                property_detail: 'Property Detail', date_doc_sent: 'Doc Sent', date_updated: 'Date Updated'
+            };
+            const actionClass = { CREATE: 'done', UPDATE: 'progress', DELETE: 'declined' };
+            const currencyKeys = ['total_requested', 'total_approved', 'total_offered'];
+            const renderChangeFields = (cr) => {
+                if (cr.action === 'DELETE') return `<div class="bos-notes-box">This record will be permanently deleted.</div>`;
+                const fmtVal = (k, v) => Array.isArray(v) ? v.map(x => (x && typeof x === 'object') ? (x.name || '') : String(x)).filter(Boolean).join(', ') : (currencyKeys.includes(k) ? UI.formatCurrency(v) : v);
+                const entries = Object.entries(cr.payload || {})
+                    .filter(([k, v]) => v !== null && v !== '' && !['id', 'created_at', 'updated_at', 'progress', 'collateral_id', 'type_facility_custom'].includes(k))
+                    .slice(0, 10);
+                if (!entries.length) return '';
+                return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;font-size:12px;padding:8px 0">
+                    ${entries.map(([k, v]) => `<div><span style="color:var(--text-3);display:block;font-size:10px;text-transform:uppercase;letter-spacing:.03em">${esc(fieldLabels[k] || k.replace(/_/g, ' '))}</span><span>${esc(fmtVal(k, v))}</span></div>`).join('')}
+                </div>`;
+            };
 
             el.innerHTML = `
             <div class="module-header-bar">
                 <div class="module-title-wrap">
-                    <h2>HOD Review Proposals</h2>
-                    <p>Bank facility proposals awaiting Head of Department evaluation and approval decision</p>
+                    <h2>HOD Review</h2>
+                    <p>Pending changes and bank facility proposals awaiting Head of Department evaluation</p>
                 </div>
                 <div class="summary-pills-bar">
+                    <div class="pill-stat">
+                        <span class="pill-stat-label">Pending Changes</span>
+                        <span class="pill-stat-val" style="color:var(--amber)">${pendingChanges.length}</span>
+                    </div>
                     <div class="pill-stat">
                         <span class="pill-stat-label">Total Proposals</span>
                         <span class="pill-stat-val">${reviews.length}</span>
@@ -2122,7 +2446,42 @@ const App = {
                         <span class="pill-stat-label">Pending Review</span>
                         <span class="pill-stat-val" style="color:var(--amber)">${pendingCount}</span>
                     </div>
+                    <button class="btn-secondary" id="btn-review-history">${this.icons.activity} Review History</button>
                     <button class="btn-primary" id="btn-add-bos">${this.icons.plus} Add Proposal</button>
+                </div>
+            </div>
+
+            <div class="card" style="margin-bottom:24px">
+                <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+                    <div class="card-header-title">Pending Change Requests</div>
+                    ${pendingChanges.length ? `<span class="badge hold"><span class="badge-dot"></span>${pendingChanges.length} awaiting approval</span>` : ''}
+                </div>
+                <div class="card-body">
+                    ${pendingChanges.length === 0 ? `
+                        <p style="color:var(--text-3);font-size:13px;margin:0">No pending changes. Staff submissions will appear here for approval.</p>
+                    ` : `
+                        <div class="bos-card-grid">
+                            ${pendingChanges.map(cr => `
+                                <div class="bos-card">
+                                    <div class="bos-card-header">
+                                        <div>
+                                            <div class="bos-card-title">${esc(cr.summary || (cr.entity + ' ' + cr.action))}</div>
+                                            <div class="bos-card-company">${esc(cr.requested_by_email || 'unknown')} · ${UI.formatDate(cr.created_at)}</div>
+                                        </div>
+                                        <span class="badge ${actionClass[cr.action] || 'pending'}"><span class="badge-dot"></span>${cr.action} ${esc(cr.entity)}</span>
+                                    </div>
+                                    ${renderChangeFields(cr)}
+                                    <div class="bos-card-actions">
+                                        ${isSuperAdmin ? `
+                                            <button class="btn-primary btn-sm" onclick="App.approveChangeRequest('${cr.id}')">Approve</button>
+                                            <button class="btn-danger btn-sm" onclick="App.rejectChangeRequest('${cr.id}')">Reject</button>
+                                            <button class="btn-secondary btn-sm" onclick="App.deleteChangeRequest('${cr.id}')">${this.icons.trash}</button>
+                                        ` : `<span style="font-size:12px;color:var(--text-3)">Awaiting HOD approval</span>`}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `}
                 </div>
             </div>
 
@@ -2216,6 +2575,7 @@ const App = {
             </div>`;
 
             document.getElementById('btn-add-bos')?.addEventListener('click', () => openBosModal());
+            document.getElementById('btn-review-history')?.addEventListener('click', () => { window.location.hash = 'review_history'; });
             document.getElementById('bos-form')?.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const data = UI.getFormData('bos-form');
@@ -2239,6 +2599,108 @@ const App = {
         };
 
         loadBos();
+    },
+
+    async renderReviewHistory(el) {
+        const isSuperAdmin = Auth.isSuperAdmin();
+        let filter = 'ALL';
+
+        const esc = (s) => String(s ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+        const fieldLabels = {
+            company: 'Company', bank: 'Bank', type_facility: 'Type of Facility', name_facility: 'Name of Facility',
+            category: 'Category', year_application: 'Year', bfr: 'BFR', profit_rate: 'Profit Rate', rate_tenure: 'Tenure',
+            status: 'Status', collateral: 'Collateral', total_requested: 'Total Requested', total_approved: 'Total Approved',
+            app_details: 'Details', hold_reason: 'Hold Reason', decline_reason: 'Decline Reason', cancel_reason: 'Cancellation Reason', discharge_note: 'Discharged Note', officers: 'Officers', annual_review: 'Annual Review',
+            name: 'Name', description: 'Description', bfr_current: 'BFR Current', bfr_previous: 'BFR Previous',
+            property_detail: 'Property Detail', date_doc_sent: 'Doc Sent', date_updated: 'Date Updated'
+        };
+        const currencyKeys = ['total_requested', 'total_approved', 'total_offered'];
+        const renderFields = (cr) => {
+            if (cr.action === 'DELETE') return `<div class="bos-notes-box">Record deletion was ${cr.status.toLowerCase()}.</div>`;
+            const fmtVal = (k, v) => Array.isArray(v) ? v.map(x => (x && typeof x === 'object') ? (x.name || '') : String(x)).filter(Boolean).join(', ') : (currencyKeys.includes(k) ? UI.formatCurrency(v) : v);
+            const entries = Object.entries(cr.payload || {})
+                .filter(([k, v]) => v !== null && v !== '' && !['id', 'created_at', 'updated_at', 'progress', 'collateral_id', 'type_facility_custom'].includes(k))
+                .slice(0, 8);
+            if (!entries.length) return '';
+            return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;font-size:12px;padding:8px 0">
+                ${entries.map(([k, v]) => `<div><span style="color:var(--text-3);display:block;font-size:10px;text-transform:uppercase;letter-spacing:.03em">${esc(fieldLabels[k] || k.replace(/_/g, ' '))}</span><span>${esc(fmtVal(k, v))}</span></div>`).join('')}
+            </div>`;
+        };
+
+        App.restoreChangeRequest = async (id) => {
+            if (!Auth.isSuperAdmin()) { UI.showToast('Only HOD can restore', 'error'); return; }
+            const confirmed = await UI.confirmDialog('Restore this decision? The applied change (if any) will be reversed and the request returns to Pending for re-review.', 'Restore Decision');
+            if (!confirmed) return;
+            try {
+                await DB.restoreChangeRequest(id);
+                UI.showToast('Decision restored — request is pending again', 'success');
+                load();
+            } catch (err) { UI.showToast('Error restoring: ' + err.message, 'error'); }
+        };
+
+        const load = async () => {
+            const all = await DB.fetchChangeRequests();
+            const decided = all.filter(c => c.status === 'APPROVED' || c.status === 'REJECTED');
+            const shown = filter === 'ALL' ? decided : decided.filter(c => c.status === filter);
+            const approvedCount = decided.filter(c => c.status === 'APPROVED').length;
+            const rejectedCount = decided.filter(c => c.status === 'REJECTED').length;
+
+            el.innerHTML = `
+            <div class="module-header-bar">
+                <div class="module-title-wrap">
+                    <h2>Review History</h2>
+                    <p>Record of approved and rejected change requests, with the ability to restore a wrong decision</p>
+                </div>
+                <div class="summary-pills-bar">
+                    <div class="pill-stat"><span class="pill-stat-label">Approved</span><span class="pill-stat-val" style="color:var(--green)">${approvedCount}</span></div>
+                    <div class="pill-stat"><span class="pill-stat-label">Rejected</span><span class="pill-stat-val" style="color:var(--red)">${rejectedCount}</span></div>
+                </div>
+            </div>
+
+            <div class="filter-bar" style="margin-bottom:20px">
+                <select id="history-filter">
+                    <option value="ALL" ${filter === 'ALL' ? 'selected' : ''}>All Decisions</option>
+                    <option value="APPROVED" ${filter === 'APPROVED' ? 'selected' : ''}>Approved Only</option>
+                    <option value="REJECTED" ${filter === 'REJECTED' ? 'selected' : ''}>Rejected Only</option>
+                </select>
+            </div>
+
+            ${shown.length === 0 ? `
+                <div class="empty-state">
+                    <div class="empty-state-icon">${this.icons.activity}</div>
+                    <h3>No decisions yet</h3>
+                    <p>Approved and rejected requests will be listed here.</p>
+                </div>
+            ` : `
+                <div class="bos-card-grid">
+                    ${shown.map(cr => `
+                        <div class="bos-card">
+                            <div class="bos-card-header">
+                                <div>
+                                    <div class="bos-card-title">${esc(cr.summary || (cr.entity + ' ' + cr.action))}</div>
+                                    <div class="bos-card-company">${cr.action} ${esc(cr.entity)} · by ${esc(cr.requested_by_email || 'unknown')}</div>
+                                </div>
+                                <span class="badge ${cr.status === 'APPROVED' ? 'done' : 'declined'}"><span class="badge-dot"></span>${cr.status}</span>
+                            </div>
+
+                            ${renderFields(cr)}
+
+                            <div class="bos-notes-box" style="margin-top:6px">
+                                Reviewed by <b>${esc(cr.reviewed_by_email || 'unknown')}</b> on ${UI.formatDate(cr.reviewed_at)}${cr.restored_at ? `<br>Restored on ${UI.formatDate(cr.restored_at)}` : ''}
+                            </div>
+
+                            <div class="bos-card-actions">
+                                ${isSuperAdmin ? `<button class="btn-secondary btn-sm" onclick="App.restoreChangeRequest('${cr.id}')">Restore</button>` : ''}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `}`;
+
+            document.getElementById('history-filter')?.addEventListener('change', (e) => { filter = e.target.value; load(); });
+        };
+
+        load();
     }
 };
 

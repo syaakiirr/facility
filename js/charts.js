@@ -24,12 +24,14 @@ const Charts = {
         }
     },
 
-    render(id, option) {
+    render(id, option, onClick) {
         this.dispose(id);
         const el = document.getElementById(id);
         if (!el) return;
         const chart = echarts.init(el, null, { renderer: 'canvas' });
         chart.setOption({ ...this.baseOption(), ...option });
+        el.style.cursor = onClick ? 'pointer' : '';
+        if (onClick) chart.on('click', onClick);
         this.instances[id] = chart;
         if (!this.resizeHandler) {
             this.resizeHandler = () => {
@@ -40,13 +42,13 @@ const Charts = {
         return chart;
     },
 
-    donutStatus(containerId, statusCount) {
+    donutStatus(containerId, statusCount, onClick) {
         const data = Object.entries(statusCount || {})
             .filter(([, v]) => v > 0)
             .map(([k, v]) => ({
                 name: k,
                 value: v,
-                itemStyle: { color: { 'DONE': '#16A34A', 'IN PROGRESS': '#2563EB', 'HOLD': '#D97706', 'ON HOLD': '#D97706', 'REVIEW BY BOS': '#8B5CF6', 'DECLINED': '#DC2626', 'DECLINED BY BANK': '#DC2626', 'DECLINED BY COMPANY': '#DC2626', 'PENDING': '#D97706' }[k] || '#94A3B8' }
+                itemStyle: { color: { 'IN FORCE': '#16A34A', 'DONE': '#0D9488', 'DISCHARGED': '#64748B', 'SETTLED': '#64748B', 'IN PROGRESS': '#2563EB', 'ON HOLD': '#D97706', 'HOLD': '#D97706', 'REVIEW BY HOD': '#8B5CF6', 'REVIEW BY BOS': '#8B5CF6', 'PREPARATION DOC BY FINANCE': '#3B82F6', 'SUBMISSION DOC TO BANK': '#0284C7', 'DECLINED': '#DC2626', 'DECLINED BY BANK': '#DC2626', 'DECLINED BY COMPANY': '#DC2626', 'CANCELLED BY BANK': '#DC2626', 'PENDING': '#F59E0B' }[k] || '#94A3B8' }
             }));
         if (data.length === 0) return this.render(containerId, { title: { text: 'No data', left: 'center', textStyle: { color: '#94A3B8', fontSize: 14, fontWeight: 400 } } });
         return this.render(containerId, {
@@ -61,7 +63,7 @@ const Charts = {
                 emphasis: { label: { show: true, fontWeight: 'bold' } },
                 data
             }]
-        });
+        }, onClick);
     },
 
     barBanks(containerId, bankCounts) {
@@ -138,7 +140,7 @@ const Charts = {
         });
     },
 
-    donutFacility(containerId, facilityCounts) {
+    donutFacility(containerId, facilityCounts, onClick) {
         const palette = ['#2563EB', '#16A34A', '#D97706', '#DC2626', '#8B5CF6', '#06B6D4', '#F59E0B', '#6366F1'];
         const data = Object.entries(facilityCounts || {})
             .filter(([, v]) => v > 0)
@@ -159,7 +161,7 @@ const Charts = {
                 label: { show: true, formatter: '{b}\n{d}%', fontSize: 11, color: '#475569' },
                 data
             }]
-        });
+        }, onClick);
     },
 
     barBankSuccessRate(containerId, bankStats) {

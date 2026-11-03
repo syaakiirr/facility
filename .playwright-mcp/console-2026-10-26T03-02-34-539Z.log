@@ -1,0 +1,12 @@
+[      87ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8931/pages/login.html:0
+[     150ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8931/favicon.ico:0
+[ 2685883ms] TypeError: Cannot redefine property: supabase
+    at Object.defineProperty (<anonymous>)
+    at <anonymous>:101:12
+    at <anonymous>:102:5
+    at <anonymous>:103:7
+[ 5002210ms] TypeError: Cannot redefine property: supabase
+    at Object.defineProperty (<anonymous>)
+    at <anonymous>:101:12
+    at <anonymous>:102:5
+    at <anonymous>:103:7

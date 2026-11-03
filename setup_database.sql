@@ -53,6 +53,9 @@ CREATE TABLE IF NOT EXISTS applications (
   total_approved   NUMERIC DEFAULT 0,
   decline_reason   TEXT,
   hold_reason      TEXT,
+  cancel_reason    TEXT,
+  discharge_note   BOOLEAN DEFAULT false,
+  officers         JSONB DEFAULT '[]'::jsonb,
   notes            TEXT,
   created_at       TIMESTAMPTZ DEFAULT NOW(),
   updated_at       TIMESTAMPTZ DEFAULT NOW()
@@ -169,24 +172,24 @@ INSERT INTO applications (category, company, year_application, bank, bfr, type_f
   ('COMPANY', 'IZHORA KLADER TRADING', 2024, 'Affin Bank', '6.56%', 'TERM LOAN', 'AFFIN SME SRF', '80% SJPP', '3.75%', 'DECLINED BY COMPANY', 'COLLATERAL USING SINKING FUND', 0, '2024-03-10', '2025-07-16', 500000, NULL, 'COLLATERAL USING SINKING FUND');
 
 -- ============================================================
--- SEED DATA — APPLICATIONS (PROPERTY — sample 10)
+-- SEED DATA — APPLICATIONS (PROPERTY & FACILITY FROM DATABASE PROPERTY SHEET)
 -- ============================================================
 INSERT INTO applications (category, company, year_application, bank, bfr, type_facility, name_facility, collateral, profit_rate, rate_tenure, status, app_details, progress, date_updated, total_requested, property_detail) VALUES
-  ('PROPERTY', 'MUAZ MAJU SDN BHD', 2022, 'Maybank', '6.40%', 'TERM LOAN', 'PROPERTY LOAN', 'HARTANAH', 'BFR + 1%', '20 YEARS', 'IN PROGRESS', 'PROCESSING', 50, '2026-06-30', 3500000, 'Shoplot 4 Tingkat Setapak RM 3.5J'),
-  ('PROPERTY', 'MUAZ MAJU SDN BHD', 2022, 'Affin Bank', '6.56%', 'OVERDRAFT', 'OD-i', 'HARTANAH', 'BFR + 1.5%', 'MONTHLY', 'ON HOLD', 'WAITING DOCUMENT', 20, '2026-06-30', 500000, 'Shoplot 4 Tingkat Setapak RM 3.5J'),
-  ('PROPERTY', 'MUAZ MAJU SDN BHD', 2023, 'Maybank', '6.40%', 'TERM LOAN', 'PROPERTY LOAN', 'HARTANAH', 'BFR + 1%', '20 YEARS', 'ON HOLD', 'WAITING DOCUMENT', 10, '2026-06-30', 4400000, 'Bungalow Cheras RM 4.4J'),
-  ('PROPERTY', 'PATRIOT PROTECTION & SECURITY SDN BHD', 2022, 'Maybank', '6.40%', 'TERM LOAN', 'PROPERTY LOAN', 'HARTANAH', 'BFR + 1%', '20 YEARS', 'ON HOLD', 'WAITING VALUATION', 10, '2026-06-30', 2000000, 'Property'),
-  ('PROPERTY', 'GOLDEN IZZ ENTERPRISE', 2022, 'Maybank', '6.40%', 'TERM LOAN', 'PROPERTY LOAN', 'HARTANAH', 'BFR + 1%', '20 YEARS', 'ON HOLD', 'WAITING VALUATION', 10, '2026-06-30', 1500000, 'Property'),
-  ('PROPERTY', 'COMMITTED SECURITY SDN BHD', 2022, 'Maybank', '6.40%', 'TERM LOAN', 'PROPERTY LOAN', 'HARTANAH', 'BFR + 1%', '20 YEARS', 'ON HOLD', 'WAITING VALUATION', 10, '2026-06-30', 1800000, 'Property'),
-  ('PROPERTY', 'TOUGH SECURITY SDN BHD', 2022, 'Maybank', '6.40%', 'TERM LOAN', 'PROPERTY LOAN', 'HARTANAH', 'BFR + 1%', '20 YEARS', 'ON HOLD', 'WAITING VALUATION', 10, '2026-06-30', 1200000, 'Property'),
-  ('PROPERTY', 'AFRA SERVICES SDN BHD', 2022, 'Maybank', '6.40%', 'TERM LOAN', 'PROPERTY LOAN', 'HARTANAH', 'BFR + 1%', '20 YEARS', 'ON HOLD', 'WAITING VALUATION', 10, '2026-06-30', 1000000, 'Property'),
-  ('PROPERTY', 'COMMITTED FIREARMS SDN BHD', 2023, 'Maybank', '6.40%', 'TERM LOAN', 'PROPERTY LOAN', 'HARTANAH', 'BFR + 1%', '20 YEARS', 'IN PROGRESS', 'PROCESSING', 40, '2026-06-30', 2500000, 'Property'),
-  ('PROPERTY', 'NELANG SECURITY SDN BHD', 2023, 'Maybank', '6.40%', 'TERM LOAN', 'PROPERTY LOAN', 'HARTANAH', 'BFR + 1%', '20 YEARS', 'IN PROGRESS', 'PROCESSING', 40, '2026-06-30', 2000000, 'Property');
+  ('PROPERTY', 'MUAZ MAJU SDN BHD', 2022, 'Maybank', '6.40%', 'TERM LOAN', 'PROPERTY LOAN', 'PROPERTY', 'BFR + 1%', '20 YEARS', 'IN PROGRESS', 'PROCESSING', 50, '2026-06-30', 3500000, 'Shoplot 4 Tingkat Setapak RM 3.5J'),
+  ('PROPERTY', 'MUAZ MAJU SDN BHD', 2022, 'Affin Bank', '6.56%', 'OVERDRAFT', 'OD-i', '80% SJPP, 20% FD', 'BFR + 1.5%', 'MONTHLY', 'ON HOLD', 'WAITING DOCUMENT', 20, '2026-06-30', 500000, 'Shoplot 4 Tingkat Setapak RM 3.5J'),
+  ('PROPERTY', 'MUAZ MAJU SDN BHD', 2023, 'Maybank', '6.40%', 'TERM LOAN', 'PROPERTY LOAN', 'PROPERTY', 'BFR + 1%', '20 YEARS', 'ON HOLD', 'WAITING DOCUMENT', 10, '2026-06-30', 4400000, 'Bungalow Cheras RM 4.4J'),
+  ('COMPANY', 'PATRIOT PROTECTION & SECURITY SDN BHD', 2022, 'Maybank', '6.40%', 'OVERDRAFT', 'CM CASH LINE-i', '80% SJPP', 'BFR + 1%', 'MAX 10 YEARS', 'ON HOLD', 'PENDING DOCS SUBMISSION (DIRECTOR CONSENT FORM SIGNATURE)', 10, '2026-06-30', 2000000, NULL),
+  ('COMPANY', 'GOLDEN IZZ ENTERPRISE', 2022, 'Maybank', '6.40%', 'OVERDRAFT', 'CM CASH LINE-i', '80% SJPP', 'BFR + 1%', 'MAX 10 YEARS', 'ON HOLD', 'PENDING DOCS SUBMISSION (DIRECTOR CONSENT FORM SIGNATURE)', 10, '2026-06-30', 1500000, NULL),
+  ('COMPANY', 'COMMITTED SECURITY SDN BHD', 2022, 'Maybank', '6.40%', 'OVERDRAFT', 'CM CASH LINE-i', '80% SJPP', 'BFR + 1%', 'MAX 10 YEARS', 'ON HOLD', 'PENDING DOCS SUBMISSION (DIRECTOR CONSENT FORM SIGNATURE)', 10, '2026-06-30', 1800000, NULL),
+  ('COMPANY', 'TOUGH SECURITY SDN BHD', 2022, 'Maybank', '6.40%', 'OVERDRAFT', 'CM CASH LINE-i', '80% SJPP', 'BFR + 1%', 'MAX 10 YEARS', 'ON HOLD', 'PENDING DOCS SUBMISSION (DIRECTOR CONSENT FORM SIGNATURE)', 10, '2026-06-30', 1200000, NULL),
+  ('COMPANY', 'AFRA SERVICES SDN BHD', 2022, 'Maybank', '6.40%', 'OVERDRAFT', 'CM CASH LINE-i', '80% SJPP', 'BFR + 1%', 'MAX 10 YEARS', 'ON HOLD', 'PENDING DOCS SUBMISSION (DIRECTOR CONSENT FORM SIGNATURE)', 10, '2026-06-30', 1000000, NULL),
+  ('COMPANY', 'COMMITTED FIREARMS SDN BHD', 2023, 'Maybank', '6.40%', 'OVERDRAFT', 'OD-i', '80% SJPP', 'BFR + 1%', 'MONTHLY', 'IN PROGRESS', 'PROCESSING AT BANK', 40, '2026-06-30', 2500000, NULL),
+  ('COMPANY', 'NELANG SECURITY SDN BHD', 2023, 'Maybank', '6.40%', 'OVERDRAFT', 'CM CASH LINE-i', '80% SJPP', 'BFR + 1%', 'MAX 10 YEARS', 'IN PROGRESS', 'PROCESSING AT BANK', 40, '2026-06-30', 2000000, NULL);
 
 -- ============================================================
 -- SEED DATA — APPLICATIONS (ASSET)
 -- ============================================================
-INSERT INTO applications (category, company, year_application, bank, type_facility, name_facility, status, app_dettakbolails, progress, date_updated) VALUES
+INSERT INTO applications (category, company, year_application, bank, type_facility, name_facility, status, app_details, progress, date_updated) VALUES
   ('ASSET', 'ATLAS MOTIONS SDN BHD', 2025, 'UOB Bank', 'ASSET FINANCING', 'GAMODA', 'PENDING', 'PENDING PROCESS', 30, '2026-06-30'),
   ('ASSET', 'ATLAS MOTIONS SDN BHD', 2025, 'Public Bank', 'ASSET FINANCING', 'GAMODA', 'PENDING', 'PENDING PROCESS', 30, '2026-06-30');
 
@@ -223,7 +226,7 @@ INSERT INTO collaterals (name, description) VALUES
   ('80% SJPP', 'SJPP guarantee only'),
   ('FD', 'Fixed Deposit'),
   ('FD / SJPP', 'Fixed Deposit or SJPP guarantee'),
-  ('HARTANAH', 'Property/Real estate as collateral'),
+  ('PROPERTY', 'Property/Real estate as collateral'),
   ('80% SJPP / CGC', 'SJPP or Credit Guarantee Corporation')
 ON CONFLICT (name) DO NOTHING;
 
@@ -344,6 +347,7 @@ INSERT INTO page_permissions (role, page_key, is_allowed) VALUES
   ('staff', 'banks', true),
   ('staff', 'reports', true),
   ('staff', 'bos_review', true),
+  ('staff', 'review_history', false),
   ('staff', 'collateral', true),
   ('staff', 'settings', false)
 ON CONFLICT (role, page_key) DO NOTHING;

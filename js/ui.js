@@ -69,10 +69,10 @@ const UI = {
         const map = {
             'IN FORCE': 'in-force',
             'DONE': 'done',
+            'DISCHARGED': 'settled',
             'SETTLED': 'settled',
             'IN PROGRESS': 'progress',
             'ON HOLD': 'hold',
-            'HOLD': 'hold',
             'PENDING': 'pending',
             'REVIEW BY HOD': 'hold',
             'REVIEW BY BOS': 'hold',
@@ -80,7 +80,8 @@ const UI = {
             'SUBMISSION DOC TO BANK': 'progress',
             'DECLINED': 'declined',
             'DECLINED BY BANK': 'declined',
-            'DECLINED BY COMPANY': 'declined'
+            'DECLINED BY COMPANY': 'declined',
+            'CANCELLED BY BANK': 'declined'
         };
         const cls = map[status] || 'pending';
         return `<span class="badge ${cls}"><span class="badge-dot"></span>${status}</span>`;
@@ -88,26 +89,27 @@ const UI = {
 
     progressHtml(value, status) {
         const progressMap = {
-            'IN FORCE': 100, 'DONE': 100, 'SETTLED': 100, 'IN PROGRESS': 50, 'PENDING': 10,
-            'ON HOLD': 30, 'HOLD': 30, 'REVIEW BY HOD': 80, 'REVIEW BY BOS': 80,
+            'IN FORCE': 100, 'DONE': 100, 'DISCHARGED': 100, 'SETTLED': 100, 'IN PROGRESS': 50, 'PENDING': 10,
+            'ON HOLD': 30, 'REVIEW BY HOD': 80, 'REVIEW BY BOS': 80,
             'PREPARATION DOC BY FINANCE': 20, 'SUBMISSION DOC TO BANK': 70,
-            'DECLINED': 100, 'DECLINED BY BANK': 100, 'DECLINED BY COMPANY': 100
+            'DECLINED': 100, 'DECLINED BY BANK': 100, 'DECLINED BY COMPANY': 100, 'CANCELLED BY BANK': 0
         };
         const statusColors = {
             'IN FORCE': '#16a34a',     // Emerald Green
             'DONE': '#0d9488',         // Forest Teal
+            'DISCHARGED': '#64748b',   // Cool Slate Gray
             'SETTLED': '#64748b',      // Cool Slate Gray
             'IN PROGRESS': '#2563eb',  // Royal Blue
             'PENDING': '#d97706',      // Amber
             'ON HOLD': '#d97706',      // Amber
-            'HOLD': '#d97706',         // Amber
             'REVIEW BY HOD': '#8b5cf6',// Violet
             'REVIEW BY BOS': '#8b5cf6',
             'PREPARATION DOC BY FINANCE': '#3b82f6', // Light Blue
             'SUBMISSION DOC TO BANK': '#0284c7',     // Sky Blue
             'DECLINED': '#dc2626',      // Red
             'DECLINED BY BANK': '#dc2626',
-            'DECLINED BY COMPANY': '#dc2626'
+            'DECLINED BY COMPANY': '#dc2626',
+            'CANCELLED BY BANK': '#dc2626'
         };
         let v = (value !== undefined && value !== null && value !== 0) ? value : (progressMap[status] !== undefined ? progressMap[status] : 0);
         let color = statusColors[status] || '#2563eb';
