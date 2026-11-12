@@ -31,6 +31,7 @@ const UI = {
                     return `<section class="date-history-section"><h4>${label}</h4>${events.length ? `<ol>${events.map(event => {
                         const recorded = new Date(event.recorded_at).toLocaleString('en-GB', { timeZone: 'Asia/Singapore', dateStyle: 'medium', timeStyle: 'short' });
                         return `<li><div class="date-history-dates">${event.source === 'baseline' ? `Existing date: ${date(event.new_date)}` : `${date(event.previous_date)} → ${date(event.new_date)}`}</div>
+                            ${event.note ? `<p class="date-history-note">${esc(event.note)}</p>` : '<p>No note recorded.</p>'}
                             <p>${event.source === 'baseline' ? 'History tracking started' : 'Recorded'} ${esc(recorded)} (SGT)${event.recorded_by_email ? ` · ${esc(event.recorded_by_email)}` : ''}</p></li>`;
                     }).join('')}</ol>` : '<p>No recorded date changes.</p>'}</section>`;
                 }).join('');

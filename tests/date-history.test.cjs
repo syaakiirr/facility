@@ -45,8 +45,9 @@ test('date history imports audit, preserves baselines, follows review transactio
             await db.query("SELECT set_config('test.uid', $1, false)", [id]);
             await db.exec('SET ROLE authenticated');
         };
-        const submit = async date => (await db.query(`SELECT to_jsonb(submit_application_edit($1,
-            jsonb_build_object('date_followup', $2::text), (SELECT to_jsonb(a) FROM applications a WHERE id=$1), 'Follow-up')) AS request`, [app, date])).rows[0].request;
+        const submitPatch = async patch => (await db.query(`SELECT to_jsonb(submit_application_edit($1,
+            $2::jsonb, (SELECT to_jsonb(a) FROM applications a WHERE id=$1), 'Follow-up')) AS request`, [app, JSON.stringify(patch)])).rows[0].request;
+        const submit = date => submitPatch({ date_followup: date, date_followup_note: 'Meeting with bank; waiting for documents' });
         const review = (id, decision) => db.query('SELECT review_application_edit($1, $2)', [id, decision]);
         await login(staff);
         const rejected = await submit('2026-11-25');
@@ -62,10 +63,12 @@ test('date history imports audit, preserves baselines, follows review transactio
         assert.equal(latest.previous_date, '2026-11-22');
         assert.equal(latest.new_date, '2026-11-26');
         assert.equal(latest.recorded_by, hod);
+        assert.equal(latest.note, 'Meeting with bank; waiting for documents');
         await review(pending.id, 'RESTORE');
         latest = (await history()).at(-1);
         assert.equal(latest.previous_date, '2026-11-26');
         assert.equal(latest.new_date, '2026-11-22');
+        assert.equal(latest.note, null, 'restore must restore the date and its note together');
         await db.exec('RESET ROLE');
         await db.exec(`UPDATE applications SET date_followup = NULL WHERE id = '${app}';
             UPDATE applications SET notes = 'Unrelated' WHERE id = '${app}';`);
@@ -84,6 +87,26 @@ test('date history imports audit, preserves baselines, follows review transactio
         await assert.rejects(db.exec(`INSERT INTO application_date_history(application_id,field_name,source) VALUES ('${app}','date_followup','change')`), /permission denied/);
         await assert.rejects(db.exec('DELETE FROM application_date_history'), /permission denied/);
         await assert.rejects(db.exec("UPDATE application_date_history SET new_date = '2000-01-01'"), /permission denied/);
+        const datedNote = await submitPatch({ date_followup: '2026-11-26', date_followup_note: 'Meeting on 26', date_doc_sent_note: 'Sent bank statements' });
+        await login(hod);
+        await review(datedNote.id, 'APPROVED');
+        assert.equal((await history()).find(r => r.note === 'Sent bank statements').field_name, 'date_doc_sent');
+        await login(staff);
+        const correction = await submitPatch({ date_followup_note: 'Meeting on 26; awaiting bank reply' });
+        assert.equal(correction.payload.date_followup, '2026-11-26', 'note correction is tied to its date');
+        await login(hod);
+        await review(correction.id, 'APPROVED');
+        assert.equal((await history()).at(-1).previous_date, '2026-11-26');
+        assert.equal((await history()).at(-1).new_date, '2026-11-26');
+        assert.ok((await history()).some(r => r.note === 'Meeting on 26'), 'previous note remains immutable');
+        await login(staff);
+        const staleNote = await submitPatch({ date_followup_note: 'Another note for 26' });
+        const nextDate = await submitPatch({ date_followup: '2026-11-27' });
+        assert.equal(nextDate.payload.date_followup_note, null, 'a date-only update must not carry over the previous note');
+        await login(hod);
+        await review(nextDate.id, 'APPROVED');
+        await assert.rejects(review(staleNote.id, 'APPROVED'), /reviewed field has changed/);
+        assert.equal((await history()).at(-1).note, null);
     } finally { await db.close(); }
 });
 
@@ -98,6 +121,7 @@ test('history queries scope every page to one application and propagate failures
     assert.equal(calls.filter(call => call[0] === 'eq' && call[1] === 'application_id' && call[2] === 'application-1').length, 2);
     query.range = async () => ({ error: new Error('Unavailable') });
     await assert.rejects(context.DB.fetchApplicationDateHistory('application-1'), /Unavailable/);
+    assert.throws(() => context.DB._filterApplicationPayload({ date_followup_note: 'Do not lose this note' }, { id: 'old-schema' }), /Date notes are not enabled/);
 });
 
 test('date history displays old and latest dates, escapes data, and supports empty/error/retry states', async () => {
@@ -107,13 +131,14 @@ test('date history displays old and latest dates, escapes data, and supports emp
         await page.setContent('<main style="padding:16px"><h3>Date History</h3><div id="history"></div></main>');
         await page.addStyleTag({ path: path.join(root, 'css/style.css') });
         await page.addScriptTag({ content: `const DB = { fetchApplicationDateHistory: async () => [
-            { field_name:'date_followup', previous_date:'2026-11-22', new_date:'2026-11-26', source:'change', recorded_at:'2026-11-26T02:00:00Z', recorded_by_email:'<img src=x onerror=alert(1)>' },
+            { field_name:'date_followup', previous_date:'2026-11-22', new_date:'2026-11-26', source:'change', recorded_at:'2026-11-26T02:00:00Z', recorded_by_email:'reviewer@example.com', note:'Meeting with bank. Waiting for documents. <img src=x onerror=alert(1)>' },
             { field_name:'date_doc_sent', previous_date:null, new_date:'2026-11-20', source:'baseline', recorded_at:'2026-11-20T02:00:00Z' }
         ] };` });
         await page.addScriptTag({ path: path.join(root, 'js/ui.js') });
         await page.evaluate(() => UI.renderApplicationDateHistory(document.querySelector('#history'), 'app'));
         assert.match(await page.locator('#history').innerText(), /22 Nov 2026 → 26 Nov 2026/);
         assert.match(await page.locator('#history').innerText(), /History tracking started/);
+        assert.match(await page.locator('#history').innerText(), /Meeting with bank. Waiting for documents./);
         assert.equal(await page.locator('img').count(), 0);
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
         await page.screenshot({ path: path.join(require('node:os').tmpdir(), 'facility-date-history-mobile.png'), fullPage: true });
@@ -126,8 +151,10 @@ test('date history displays old and latest dates, escapes data, and supports emp
         await page.setContent('<main id="page-content"></main>');
         await page.addStyleTag({ path: path.join(root, 'css/style.css') });
         await page.evaluate(() => {
-            const app = { id: 'application-1', company: 'Company', status: 'REVIEW BY BANK', date_followup: '2026-11-26' };
+            const app = { id: 'application-1', category: 'COMPANY', company: 'Company', status: 'REVIEW BY BANK', date_followup: '2026-11-26', date_followup_note: 'Meeting on 26', date_doc_sent: '2026-11-21', date_doc_sent_note: 'Bank statements sent' };
             DB.fetchBanks = DB.fetchCompanies = DB.fetchCollaterals = async () => [];
+            DB.fetchCompanies = async () => [{ name: 'Company' }];
+            DB.saveChange = async (...args) => { window.savedApplication = args; return { queued: true }; };
             DB.getDashboardStats = async () => ({});
             DB.fetchApplications = async () => [app];
             DB.fetchApplicationDateHistory = async id => {
@@ -144,5 +171,23 @@ test('date history displays old and latest dates, escapes data, and supports emp
         await page.locator('[data-date-history]').scrollIntoViewIfNeeded();
         await page.screenshot({ path: path.join(require('node:os').tmpdir(), 'facility-date-history-popup.png') });
         await page.getByRole('button', { name: 'Close', exact: true }).click();
+        await page.getByTitle('Edit', { exact: true }).click();
+        assert.equal(await page.getByLabel('Follow-up note', { exact: true }).inputValue(), 'Meeting on 26');
+        await page.getByLabel('Last Follow-up Date', { exact: true }).fill('2026-11-27');
+        await page.getByLabel('Last Follow-up Date', { exact: true }).dispatchEvent('change');
+        assert.equal(await page.getByLabel('Follow-up note', { exact: true }).inputValue(), '');
+        assert.equal(await page.getByLabel('Document sent note', { exact: true }).inputValue(), 'Bank statements sent');
+        await page.getByLabel('Follow-up note', { exact: true }).fill('Meeting with bank; awaiting revised offer');
+        await page.getByLabel('Follow-up note', { exact: true }).scrollIntoViewIfNeeded();
+        await page.screenshot({ path: path.join(require('node:os').tmpdir(), 'facility-date-notes-form.png') });
+        await page.getByRole('button', { name: 'Update Application', exact: true }).click();
+        await page.waitForFunction(() => !!window.savedApplication);
+        const saved = await page.evaluate(() => window.savedApplication);
+        assert.equal(saved[3].date_followup, '2026-11-27');
+        assert.equal(saved[3].date_followup_note, 'Meeting with bank; awaiting revised offer');
+        assert.equal(saved[3].date_doc_sent_note, 'Bank statements sent');
+        await page.getByRole('button', { name: 'Add Application', exact: true }).click();
+        assert.equal(await page.getByLabel('Follow-up note', { exact: true }).inputValue(), '');
+        assert.equal(await page.getByLabel('Document sent note', { exact: true }).inputValue(), '');
     } finally { await browser.close(); }
 });

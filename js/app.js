@@ -815,10 +815,16 @@ const App = {
                                 <div class="form-group"><label>Property Detail</label><input name="property_detail" placeholder="Only for Property category" /></div>
                             </div>
                             <div class="form-row">
-                                <div class="form-group"><label>Date Doc Sent</label><input type="date" name="date_doc_sent" /></div>
-                                <div class="form-group"><label>Last Follow-up Date</label><input type="date" name="date_followup" /></div>
+                                <div class="form-group">
+                                    <label for="app-date-doc-sent">Date Doc Sent</label><input id="app-date-doc-sent" type="date" name="date_doc_sent" />
+                                    <label for="app-doc-sent-note">Document sent note</label><textarea id="app-doc-sent-note" name="date_doc_sent_note" rows="3" placeholder="Which documents were sent, to whom, and what happens next?"></textarea>
+                                </div>
+                                <div class="form-group">
+                                    <label for="app-date-followup">Last Follow-up Date</label><input id="app-date-followup" type="date" name="date_followup" />
+                                    <label for="app-followup-note">Follow-up note</label><textarea id="app-followup-note" name="date_followup_note" rows="3" placeholder="What happened in the meeting or call? What is the next action?"></textarea>
+                                </div>
                             </div>
-                            <p class="date-history-help">Previous document sent and follow-up dates are kept in Date History after approval.</p>
+                            <p class="date-history-help">Each note stays with its date in Date History after approval. Changing a date clears its note for your next update.</p>
                             <div class="form-row">
                                 <div class="form-group"><label>Total Requested (RM)</label><input type="number" name="total_requested" step="0.01" /></div>
                                 <div class="form-group"><label>Total Approved (RM)</label><input type="number" name="total_approved" step="0.01" /></div>
@@ -1126,6 +1132,9 @@ const App = {
                 legacyStatusSelect.add(legacyStatus);
             }
             UI.setFormData('app-form', rowData);
+            for (const field of ['date_doc_sent', 'date_followup']) {
+                document.querySelector(`#app-form [name="${field}_note"]`).value = rowData[`${field}_note`] || '';
+            }
             
             if (typeSelect) {
                 typeSelect.dispatchEvent(new Event('change'));
@@ -1343,9 +1352,22 @@ const App = {
             UI.openModal('modal-app');
         });
 
+        for (const field of ['date_doc_sent', 'date_followup']) {
+            document.querySelector(`#app-form [name="${field}"]`).addEventListener('change', () => {
+                document.querySelector(`#app-form [name="${field}_note"]`).value = '';
+            });
+        }
+
         document.getElementById('app-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const data = UI.getFormData('app-form');
+            for (const field of ['date_doc_sent', 'date_followup']) {
+                if (data[`${field}_note`] && !data[field] && !editingRow?.[field]) {
+                    UI.showToast('Choose a date for the document sent or follow-up note.', 'error');
+                    document.querySelector(`#app-form [name="${field}"]`).focus();
+                    return;
+                }
+            }
             if (data.type_facility === 'OTHERS') {
                 data.type_facility = data.type_facility_custom || 'OTHERS';
             }
@@ -2735,7 +2757,7 @@ const App = {
                 app_details: 'Details', hold_reason: 'Hold Reason', decline_reason: 'Decline Reason', cancel_reason: 'Cancellation Reason', discharge_note: 'Discharged Note', discharge_note_text: 'Discharge Note Details', officers: 'Officers', annual_review: 'Annual Review',
                 bank_cancellation_letter: 'Bank Cancellation Letter', bank_cancellation_letter_path: 'Bank Letter File', bank_cancellation_letter_name: 'Bank Letter Name',
                 name: 'Name', description: 'Description', bfr_current: 'BFR Current', bfr_previous: 'BFR Previous',
-                property_detail: 'Property Detail', date_doc_sent: 'Doc Sent', date_updated: 'Date Updated', notes: 'Notes', collateral_id: 'Collateral ID'
+                property_detail: 'Property Detail', date_doc_sent: 'Doc Sent', date_followup: 'Last Follow-up', date_doc_sent_note: 'Document sent note', date_followup_note: 'Follow-up note', date_updated: 'Date Updated', notes: 'Notes', collateral_id: 'Collateral ID'
             };
             const actionClass = { CREATE: 'done', UPDATE: 'progress', DELETE: 'declined' };
             const currencyKeys = ['total_requested', 'total_approved', 'total_offered'];
@@ -2755,7 +2777,7 @@ const App = {
                     ['Application', ['company', 'category', 'status', 'app_details', 'progress']],
                     ['Bank & Facility', ['bank', 'bfr', 'type_facility', 'name_facility']],
                     ['Financial Details', ['total_requested', 'total_approved', 'total_offered', 'collateral', 'collateral_id', 'fixed_deposit', 'profit_rate', 'rate_tenure']],
-                    ['Dates & Reviews', ['year_application', 'annual_review', 'date_doc_sent', 'date_followup', 'date_updated']],
+                    ['Dates & Reviews', ['year_application', 'annual_review', 'date_doc_sent', 'date_doc_sent_note', 'date_followup', 'date_followup_note', 'date_updated']],
                     ['Additional Details', []]
                 ];
                 const assigned = new Set(sections.flatMap(([, keys]) => keys));
@@ -2983,7 +3005,7 @@ const App = {
             app_details: 'Details', hold_reason: 'Hold Reason', decline_reason: 'Decline Reason', cancel_reason: 'Cancellation Reason', discharge_note: 'Discharged Note', discharge_note_text: 'Discharge Note Details', officers: 'Officers', annual_review: 'Annual Review',
             bank_cancellation_letter: 'Bank Cancellation Letter', bank_cancellation_letter_path: 'Bank Letter File', bank_cancellation_letter_name: 'Bank Letter Name',
             name: 'Name', description: 'Description', bfr_current: 'BFR Current', bfr_previous: 'BFR Previous',
-            property_detail: 'Property Detail', date_doc_sent: 'Doc Sent', date_updated: 'Date Updated'
+            property_detail: 'Property Detail', date_doc_sent: 'Doc Sent', date_followup: 'Last Follow-up', date_doc_sent_note: 'Document sent note', date_followup_note: 'Follow-up note', date_updated: 'Date Updated'
         };
         const currencyKeys = ['total_requested', 'total_approved', 'total_offered'];
         const renderFields = (cr) => {

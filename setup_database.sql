@@ -49,6 +49,8 @@ CREATE TABLE IF NOT EXISTS applications (
   progress         INTEGER DEFAULT 0,
   date_doc_sent    DATE,
   date_followup    DATE,
+  date_doc_sent_note TEXT,
+  date_followup_note TEXT,
   date_updated     DATE,
   total_requested  NUMERIC DEFAULT 0,
   total_approved   NUMERIC DEFAULT 0,

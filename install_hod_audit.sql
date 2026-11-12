@@ -186,6 +186,7 @@ DECLARE
   proposed jsonb;
   original_typed jsonb;
   changes jsonb;
+  date_field text;
   result public.change_requests;
 BEGIN
   IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Sign in to submit changes'; END IF;
@@ -211,6 +212,14 @@ BEGIN
   SELECT COALESCE(jsonb_object_agg(k, proposed -> k), '{}'::jsonb) INTO changes
     FROM jsonb_object_keys(p_payload) k WHERE proposed -> k IS DISTINCT FROM original_typed -> k;
   IF changes = '{}'::jsonb THEN RETURN NULL; END IF;
+  -- Review each date together with its note, including same-date note corrections.
+  FOREACH date_field IN ARRAY ARRAY['date_doc_sent', 'date_followup'] LOOP
+    IF proposed ? (date_field || '_note') AND (changes ? date_field OR changes ? (date_field || '_note')) THEN
+      changes := changes || jsonb_build_object(date_field, proposed -> date_field,
+        date_field || '_note', CASE WHEN changes ? date_field AND NOT p_payload ? (date_field || '_note')
+          THEN 'null'::jsonb ELSE proposed -> (date_field || '_note') END);
+    END IF;
+  END LOOP;
   IF EXISTS (SELECT 1 FROM jsonb_object_keys(changes) k
     WHERE current_record -> k IS DISTINCT FROM original_typed -> k)
   THEN RAISE EXCEPTION 'This application changed. Reload it and submit your edit again'; END IF;

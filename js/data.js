@@ -35,7 +35,7 @@ const DB = {
         const rows = [];
         for (let offset = 0; ; offset += 500) {
             const { data, error } = await supabaseClient.from('application_date_history')
-                .select('id,field_name,previous_date,new_date,recorded_at,recorded_by_email,source')
+                .select('id,field_name,previous_date,new_date,recorded_at,recorded_by_email,source,note')
                 .eq('application_id', id).order('recorded_at', { ascending: false })
                 .order('id', { ascending: false }).range(offset, offset + 499);
             if (error) throw error;
@@ -72,6 +72,11 @@ const DB = {
     _filterApplicationPayload(payload, template) {
         if (!template) return payload || {};
         const allowed = new Set(Object.keys(template));
+        for (const field of ['date_doc_sent_note', 'date_followup_note']) {
+            if (payload?.[field] && !allowed.has(field)) {
+                throw new Error('Date notes are not enabled yet. Run add_application_date_history.sql and reload before saving.');
+            }
+        }
         const filtered = {};
         Object.entries(payload || {}).forEach(([key, value]) => {
             if (allowed.has(key) && !['id', 'created_at', 'updated_at'].includes(key)) {
