@@ -6,7 +6,9 @@ Run the updated script again to enable dated notes, even if date history was ins
 
 Each date has its own optional note in the application form. Changing a date clears that note input for the new event; existing notes remain in history. A same-date note correction also creates a history entry after approval. HOD sees notes in the Dates & Reviews section. Notes entered before this feature in the general Notes box are not automatically assigned to dates, and older history entries remain without notes.
 
-View Application and the HOD edit review popup show separate Document sent and Follow-up histories. Updating either date records its previous value, new value, recording time and the account that committed the change. For reviewed updates that account is the approving HOD. Pending and rejected proposals do not change this history. Clearing a date and restoring a previous date are recorded too.
+Superadmin updates, including date and note changes, are saved immediately without HOD review. Their date history is recorded immediately by the same database trigger. The approval requirement below applies to other roles.
+
+View Application shows the latest dates and their notes. View History opens a separate popup from either the application or HOD edit review. Records are newest first, with Doc Sent / Follow-up filters and collapsed note previews; selecting a record reveals its full note and recording details. History is fetched only when opened. Updating either date records its previous value, new value, recording time and the account that committed the change. For reviewed updates that account is the approving HOD. Pending and rejected proposals do not change this history. Clearing a date and restoring a previous date are recorded too.
 
 The database trigger saves history in the same transaction as the application change. Clients cannot insert, alter or delete history. History reads follow the application's row access. Deleted applications retain their history in the database, but it is not exposed to clients while the application is absent.
 

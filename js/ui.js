@@ -18,6 +18,10 @@ const UI = {
         }, duration);
     },
 
+    applicationDetails(application) {
+        return [...new Set([application.app_details, application.notes].filter(Boolean))].join('\n\n');
+    },
+
     async renderApplicationDateHistory(container, applicationId) {
         container.innerHTML = '<p role="status">Loading date history...</p>';
         try {
@@ -25,21 +29,49 @@ const UI = {
             if (!container.isConnected) return;
             const esc = value => this.escapeHtml(value);
             const date = value => value ? esc(this.formatDate(value)) : 'Not set';
-            container.innerHTML = `<p class="date-history-help">Saved application dates. Pending changes appear here after HOD approval.</p>` +
-                [['date_doc_sent', 'Document sent history'], ['date_followup', 'Follow-up history']].map(([field, label]) => {
-                    const events = history.filter(event => event.field_name === field);
-                    return `<section class="date-history-section"><h4>${label}</h4>${events.length ? `<ol>${events.map(event => {
+            container.innerHTML = `<p class="date-history-help">Newest saved records first. Changes awaiting HOD approval are not included.</p>
+                <label class="date-history-filter">Record type<select aria-label="Record type"><option value="">All records</option><option value="date_doc_sent">Doc Sent</option><option value="date_followup">Follow-up</option></select></label>
+                <p class="date-history-help" data-history-count role="status"></p><div data-history-list></div>`;
+            const filter = container.querySelector('select');
+            const render = () => {
+                const events = history.filter(event => !filter.value || event.field_name === filter.value);
+                container.querySelector('[data-history-count]').textContent = `${events.length} ${events.length === 1 ? 'record' : 'records'}`;
+                container.querySelector('[data-history-list]').innerHTML = events.length ? `<ol class="date-history-records">${events.map(event => {
                         const recorded = new Date(event.recorded_at).toLocaleString('en-GB', { timeZone: 'Asia/Singapore', dateStyle: 'medium', timeStyle: 'short' });
-                        return `<li><div class="date-history-dates">${event.source === 'baseline' ? `Existing date: ${date(event.new_date)}` : `${date(event.previous_date)} → ${date(event.new_date)}`}</div>
+                        const preview = event.note ? event.note.replace(/\s+/g, ' ').trim() : 'No note recorded';
+                        return `<li><details><summary><span class="date-history-record-type">${event.field_name === 'date_doc_sent' ? 'Doc Sent' : 'Follow-up'}</span>
+                            <span class="date-history-dates">${date(event.new_date)}</span><span class="date-history-preview">${esc(preview.length > 90 ? preview.slice(0, 90) + '…' : preview)}</span></summary>
+                            <div class="date-history-record-body"><div>${event.source === 'baseline' ? `Existing date: ${date(event.new_date)}` : `${date(event.previous_date)} → ${date(event.new_date)}`}</div>
                             ${event.note ? `<p class="date-history-note">${esc(event.note)}</p>` : '<p>No note recorded.</p>'}
-                            <p>${event.source === 'baseline' ? 'History tracking started' : 'Recorded'} ${esc(recorded)} (SGT)${event.recorded_by_email ? ` · ${esc(event.recorded_by_email)}` : ''}</p></li>`;
-                    }).join('')}</ol>` : '<p>No recorded date changes.</p>'}</section>`;
-                }).join('');
+                            <p class="date-history-help">${event.source === 'baseline' ? 'History tracking started' : 'Recorded'} ${esc(recorded)} (SGT)${event.recorded_by_email ? ` · ${esc(event.recorded_by_email)}` : ''}</p></div></details></li>`;
+                    }).join('')}</ol>` : '<p>No recorded date changes.</p>';
+            };
+            filter.onchange = render;
+            render();
         } catch (error) {
             if (!container.isConnected) return;
             container.innerHTML = '<p role="alert">Date history is unavailable. Please check that date history has been enabled for this database.</p><button type="button" class="btn-secondary btn-sm">Retry</button>';
             container.querySelector('button').onclick = () => this.renderApplicationDateHistory(container, applicationId);
         }
+    },
+
+    openApplicationDateHistory(applicationId, title) {
+        const opener = document.activeElement;
+        const dialog = document.createElement('dialog');
+        dialog.className = 'modal review-detail-modal date-history-dialog';
+        dialog.setAttribute('aria-label', 'Date History');
+        dialog.innerHTML = `<div class="modal-header"><h2>Date History</h2><button type="button" class="modal-close" aria-label="Close date history">&times;</button></div>
+            <div class="modal-body"><p class="date-history-context">${this.escapeHtml(title || 'Application')}</p><div data-history-content></div></div>
+            <div class="modal-footer"><button type="button" class="btn-secondary">Close</button></div>`;
+        dialog.querySelectorAll('button').forEach(button => { button.onclick = () => dialog.close(); });
+        dialog.addEventListener('close', () => { dialog.remove(); if (opener?.isConnected) opener.focus(); });
+        dialog.addEventListener('click', event => {
+            const bounds = dialog.getBoundingClientRect();
+            if (event.target === dialog && (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom)) dialog.close();
+        });
+        document.body.appendChild(dialog);
+        dialog.showModal();
+        this.renderApplicationDateHistory(dialog.querySelector('[data-history-content]'), applicationId);
     },
 
     openModal(id) {

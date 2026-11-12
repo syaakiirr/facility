@@ -111,6 +111,8 @@ test('application review transactions and database permissions', async () => {
         const migration = fs.readFileSync(path.join(root, 'add_application_edit_review.sql'), 'utf8');
         await db.exec(migration);
         await db.exec(migration); // Deployment is safe to rerun.
+        await db.exec(fs.readFileSync(path.join(root, 'enable_super_admin_instant_changes.sql'), 'utf8'));
+        await db.exec(fs.readFileSync(path.join(root, 'enable_super_admin_instant_changes.sql'), 'utf8'));
         const auditMigration = fs.readFileSync(path.join(root, 'add_audit_trail.sql'), 'utf8');
         await db.exec(auditMigration);
         await db.exec(auditMigration);
@@ -169,13 +171,18 @@ test('application review transactions and database permissions', async () => {
         await assert.rejects(db.query('DELETE FROM audit_events'), /permission denied/);
         await assert.rejects(db.query("UPDATE audit_events SET action = 'FAKE'"), /permission denied/);
 
+        const requestCount = (await db.query('SELECT count(*)::int AS n FROM change_requests')).rows[0].n;
         const adminEdit = await submit({ notes: 'Admin edit' }, await current());
-        assert.equal((await current()).notes, 'Original note');
-        await assert.rejects(review(adminEdit.id, 'APPROVED'), /Another reviewer/);
+        assert.equal((await current()).notes, 'Admin edit');
+        assert.equal(adminEdit.status, 'APPROVED');
+        assert.equal(adminEdit.id, null);
+        assert.equal((await db.query('SELECT count(*)::int AS n FROM change_requests')).rows[0].n, requestCount);
+        const adminAudit = (await db.query("SELECT * FROM audit_events WHERE source_table = 'applications' ORDER BY id DESC LIMIT 1")).rows[0];
+        assert.equal(adminAudit.actor_id, hod);
+        assert.equal(adminAudit.after_snapshot.notes, 'Admin edit');
         await db.exec('RESET ROLE');
         await db.exec("UPDATE page_permissions SET is_allowed = true WHERE page_key = 'bos_review'");
         await login(staff);
-        await review(adminEdit.id, 'APPROVED'); // A staff account with tab access can review.
         assert.equal((await current()).notes, 'Admin edit');
 
         const base = await current();
@@ -194,13 +201,15 @@ test('application review transactions and database permissions', async () => {
         await assert.rejects(submit({ id: hod }, await current()), /Invalid application field/);
 
         // If the request update fails, the application update must roll back too.
+        await login(staff);
         const atomic = await submit({ notes: 'Atomic' }, await current());
+        await login(hod);
         const auditCount = (await db.query('SELECT count(*)::int AS n FROM audit_events')).rows[0].n;
         await db.exec('RESET ROLE');
         await db.exec(`CREATE FUNCTION fail_review() RETURNS trigger LANGUAGE plpgsql AS
           $$ BEGIN RAISE EXCEPTION 'Simulated history failure'; END $$;
           CREATE TRIGGER fail_review BEFORE UPDATE ON change_requests FOR EACH ROW EXECUTE FUNCTION fail_review();`);
-        await login(staff);
+        await login(hod);
         await assert.rejects(review(atomic.id, 'APPROVED'), /Simulated history failure/);
         assert.equal((await current()).notes, 'First');
         await login(hod);
@@ -212,8 +221,9 @@ test('application review transactions and database permissions', async () => {
         await db.exec(`CREATE FUNCTION fail_audit() RETURNS trigger LANGUAGE plpgsql AS
           $$ BEGIN RAISE EXCEPTION 'Simulated audit failure'; END $$;
           CREATE TRIGGER fail_audit BEFORE INSERT ON audit_events FOR EACH ROW EXECUTE FUNCTION fail_audit();`);
-        await login(staff);
+        await login(hod);
         await assert.rejects(review(atomic.id, 'APPROVED'), /Simulated audit failure/);
+        await assert.rejects(submit({ notes: 'Instant but audited' }, await current()), /Simulated audit failure/);
         assert.equal((await current()).notes, 'First', 'failed audit blocks the business write');
         await db.exec('RESET ROLE');
         await db.exec('DROP TRIGGER fail_audit ON audit_events');

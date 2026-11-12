@@ -1232,10 +1232,14 @@ input,select,textarea{font-family:inherit}
 .review-detail-modal :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 @media(max-width:600px) { .review-detail-modal .detail-grid { grid-template-columns:1fr; } }
 .date-history-help { font-size:12px; color:var(--text-2); margin:8px 0 16px; line-height:1.6; }
-.date-history-section { margin-bottom:18px; }
-.date-history-section h4 { font-size:13px; margin-bottom:8px; }
-.date-history-section ol { list-style:none; padding:0; margin:0; }
-.date-history-section li { padding:10px 0; border-bottom:1px solid var(--border); overflow-wrap:anywhere; }
 .date-history-dates { font-size:13px; font-weight:600; }
-.date-history-section p { font-size:12px; color:var(--text-2); margin-top:4px; overflow-wrap:anywhere; }
-.date-history-section .date-history-note { white-space:pre-wrap; color:var(--text-1); font-size:13px; line-height:1.6; }
+.date-history-context { font-weight:600; margin-bottom:12px; overflow-wrap:anywhere; }
+.date-history-filter { display:grid; gap:6px; font-size:13px; }
+.date-history-filter select { min-height:44px; padding:8px; border:1px solid var(--border); border-radius:6px; color:var(--text-1); background:var(--bg); font:inherit; }
+.date-history-records { list-style:none; padding:0; margin:0; }
+.date-history-records li { border-bottom:1px solid var(--border); }
+.date-history-records summary { cursor:pointer; padding:14px 4px; font-size:13px; overflow-wrap:anywhere; }
+.date-history-record-type { color:var(--text-2); margin-right:12px; }
+.date-history-preview { display:block; margin:6px 0 0 16px; color:var(--text-2); }
+.date-history-record-body { padding:0 16px 12px; font-size:13px; }
+.date-history-note,.date-latest-note { white-space:pre-wrap; overflow-wrap:anywhere; font-size:13px; line-height:1.6; margin-top:8px; }

@@ -6,12 +6,12 @@ const vm = require('node:vm');
 const { chromium } = require('playwright');
 const root = path.join(__dirname, '..');
 
-test('staff and admin edits use the pending RPC without writing applications', async () => {
+test('edit results distinguish immediate superadmin writes from staff review requests', async () => {
     const calls = [];
     const context = vm.createContext({
         Auth: { isSuperAdmin: () => true },
         supabaseClient: {
-            rpc: async (name, args) => { calls.push({ name, args }); return { data: { id: 'pending' } }; },
+            rpc: async (name, args) => { calls.push({ name, args }); return { data: { status: context.Auth.isSuperAdmin() ? 'APPROVED' : 'PENDING' } }; },
             from: () => { throw new Error('Unexpected direct database write'); }
         }
     });
@@ -19,7 +19,7 @@ test('staff and admin edits use the pending RPC without writing applications', a
     for (const admin of [true, false]) {
         context.Auth.isSuperAdmin = () => admin;
         const result = await context.DB.saveChange('application', 'UPDATE', 'app', { notes: null }, 'Clear note', { notes: 'Old' });
-        assert.equal(result.queued, true);
+        assert.equal(result.queued, !admin);
     }
     assert.equal(calls.length, 2);
     assert.equal(calls[0].name, 'submit_application_edit');
@@ -30,7 +30,27 @@ test('staff and admin edits use the pending RPC without writing applications', a
     await assert.rejects(context.DB.saveChange('application', 'UPDATE', 'app', {}, '', {}), /Unavailable/);
 });
 
-test('new applications from staff and admin remain pending, appear in HOD review, and apply only on approval', async () => {
+test('superadmin routes all other supported changes directly; staff queues them', async () => {
+    const direct = [], queued = [];
+    const context = vm.createContext({ Auth: { isSuperAdmin: () => true, getUser: () => ({ id: 'user' }), getEmail: () => 'user@example.com' } });
+    vm.runInContext(fs.readFileSync(path.join(root, 'js/data.js'), 'utf8') + '\nglobalThis.DB = DB;', context);
+    context.DB._applyChange = async (...args) => { direct.push(args); return { id: 'saved' }; };
+    context.DB.insertChangeRequest = async row => { queued.push(row); return row; };
+    const operations = [['application', 'CREATE'], ['application', 'DELETE'], ['company', 'CREATE'], ['company', 'DELETE'],
+        ['bank', 'CREATE'], ['bank', 'UPDATE'], ['bank', 'DELETE'], ['collateral', 'CREATE'], ['collateral', 'UPDATE'], ['collateral', 'DELETE']];
+    for (const admin of [true, false]) {
+        context.Auth.isSuperAdmin = () => admin;
+        for (const [entity, action] of operations) {
+            const result = await context.DB.saveChange(entity, action, 'record', { name: 'Value' }, 'Change');
+            assert.equal(result.queued, !admin);
+        }
+    }
+    assert.equal(direct.length, operations.length);
+    assert.equal(queued.length, operations.length);
+    assert.ok(queued.every(row => row.status === 'PENDING'));
+});
+
+test('staff creations await approval while superadmin creations appear immediately', async () => {
     const browser = await chromium.launch();
     try {
         const page = await browser.newPage();
@@ -59,7 +79,7 @@ test('new applications from staff and admin remain pending, appear in HOD review
             DB.insertApplication = async data => { const saved = { ...data, id: 'app-' + applications.length }; applications.push(saved); return saved; };
             DB.updateChangeRequest = async (id, values) => Object.assign(requests.find(r => r.id === id), values);
             const results = [];
-            for (const isAdmin of [false, true]) {
+            for (const isAdmin of [false, false, true]) {
                 admin = isAdmin;
                 results.push(await DB.saveChange('application', 'CREATE', null,
                     { company: 'New company', name_facility: 'New facility', status: 'REVIEW BY BANK' }, 'New application'));
@@ -67,17 +87,17 @@ test('new applications from staff and admin remain pending, appear in HOD review
             await App.renderBosReview(document.querySelector('main'));
             return { queued: results.map(r => r.queued), count: applications.length, recordIds: requests.map(r => r.record_id) };
         });
-        assert.deepEqual(results, { queued: [true, true], count: 0, recordIds: [null, null] });
+        assert.deepEqual(results, { queued: [true, true, false], count: 1, recordIds: [null, null] });
         assert.equal(await page.locator('.bos-card').count(), 2);
         assert.equal(await page.getByRole('button', { name: 'Approve', exact: true }).count(), 0);
         assert.match(await page.locator('.bos-card').first().innerText(), /New facility/);
         await page.evaluate(async () => { userId = 'reviewer'; await App.renderBosReview(document.querySelector('main')); });
         await page.getByRole('button', { name: 'Approve', exact: true }).first().click();
-        await page.waitForFunction(() => applications.length === 1 && requests[0].status === 'APPROVED');
+        await page.waitForFunction(() => applications.length === 2 && requests[0].status === 'APPROVED');
         assert.equal(await page.evaluate(() => applications[0].name_facility), 'New facility');
         await page.getByRole('button', { name: 'Reject', exact: true }).click();
         await page.waitForFunction(() => requests[1].status === 'REJECTED');
-        assert.equal(await page.evaluate(() => applications.length), 1);
+        assert.equal(await page.evaluate(() => applications.length), 2);
         await page.getByText('No pending changes.', { exact: false }).waitFor();
     } finally { await browser.close(); }
 });
@@ -109,7 +129,7 @@ test('HOD review shows all changed values and supports reviewer decisions on des
                 ].map((override, index) => ({ id: 'unrelated-' + index, record_id: 'application-3',
                     entity: 'application', action: 'UPDATE', status: 'PENDING', summary: 'Unrelated request',
                     payload: { notes: 'New' }, before_payload: { notes: 'Old' }, ...override }))];
-            const DB = { fetchBosReviews: async () => { throw new Error('Legacy proposals must not be loaded'); }, fetchChangeRequests: async () => requests,
+            const DB = { fetchApplicationDateHistory: async () => [], fetchBosReviews: async () => { throw new Error('Legacy proposals must not be loaded'); }, fetchChangeRequests: async () => requests,
                 approveChangeRequest: async (id, notes) => { requests.find(r => r.id === id).status = 'APPROVED'; window.reviewNote = notes; },
                 rejectChangeRequest: async (id, notes) => { requests.find(r => r.id === id).status = 'REJECTED'; window.reviewNote = notes; } };
             UI.showToast = message => { window.lastToast = message; };
@@ -128,6 +148,12 @@ test('HOD review shows all changed values and supports reviewer decisions on des
         await page.keyboard.press('Enter');
         assert.equal(await page.getByRole('dialog').isVisible(), true);
         assert.equal(await view.innerText(), 'View');
+        await page.getByLabel('Review note (optional)').fill('Draft review note');
+        await page.getByRole('button', { name: 'View History', exact: true }).click();
+        await page.getByRole('dialog', { name: 'Date History', exact: true }).getByText('No recorded date changes.').waitFor();
+        await page.keyboard.press('Escape');
+        assert.equal(await page.getByRole('dialog').count(), 1, 'closing history returns to the HOD details popup');
+        assert.equal(await page.getByLabel('Review note (optional)').inputValue(), 'Draft review note');
         assert.equal(await page.locator('.review-change-fields:visible').count(), 1);
         assert.match(await page.locator('.review-change-fields').first().innerText(), /Original note/);
         assert.match(await page.locator('.review-change-fields').first().innerText(), /Proposed:.*\(empty\)/);

@@ -810,7 +810,7 @@ const App = {
                                 <p class="form-hint">PDF or image, max 5MB.</p>
                                 <div class="form-hint" id="bank-cancel-existing" style="display:none"></div>
                             </div>
-                            <div class="form-group"><label>Application Details</label><textarea name="app_details" rows="2"></textarea></div>
+                            <div class="form-group"><label for="app-details">Application Details</label><textarea id="app-details" name="app_details" rows="3" placeholder="Purpose of the application and relevant background"></textarea></div>
                             <div class="form-row">
                                 <div class="form-group"><label>Property Detail</label><input name="property_detail" placeholder="Only for Property category" /></div>
                             </div>
@@ -824,7 +824,7 @@ const App = {
                                     <label for="app-followup-note">Follow-up note</label><textarea id="app-followup-note" name="date_followup_note" rows="3" placeholder="What happened in the meeting or call? What is the next action?"></textarea>
                                 </div>
                             </div>
-                            <p class="date-history-help">Each note stays with its date in Date History after approval. Changing a date clears its note for your next update.</p>
+                            <p class="date-history-help">Each saved note stays with its date in Date History. Staff changes require HOD approval. Changing a date clears its note for your next update.</p>
                             <div class="form-row">
                                 <div class="form-group"><label>Total Requested (RM)</label><input type="number" name="total_requested" step="0.01" /></div>
                                 <div class="form-group"><label>Total Approved (RM)</label><input type="number" name="total_approved" step="0.01" /></div>
@@ -859,7 +859,6 @@ const App = {
                                     <p class="officers-empty" id="officers-empty">No officers added yet.</p>
                                 </div>
                             </div>
-                            <div class="form-group"><label>Notes</label><textarea name="notes" rows="2"></textarea></div>
                         </div>
                         <div class="modal-footer">
                             <button type="button" class="btn-secondary" onclick="UI.closeModal('modal-app')">Cancel</button>
@@ -997,7 +996,7 @@ const App = {
                             </div>
                             <div class="detail-group">
                                 <div class="detail-label">Application Details</div>
-                                <div class="detail-value">${row.app_details || '-'}</div>
+                                <div class="detail-value" style="white-space:pre-wrap">${UI.escapeHtml(UI.applicationDetails(row) || '-')}</div>
                             </div>
                         </div>
                         <div class="detail-section">Bank & Facility</div>
@@ -1020,12 +1019,11 @@ const App = {
                         <div class="detail-grid">
                             <div class="detail-group"><div class="detail-label">Year</div><div class="detail-value">${row.year_application || '-'}</div></div>
                             <div class="detail-group"><div class="detail-label">Annual Review (Bank)</div><div class="detail-value">${row.annual_review || (row.date_updated ? new Date(row.date_updated).toLocaleDateString('en-GB', { month: 'long' }) + ' (Annual Review)' : '-')}</div></div>
-                            <div class="detail-group"><div class="detail-label">Date Doc Sent</div><div class="detail-value">${row.date_doc_sent ? UI.formatDate(row.date_doc_sent) : '-'}</div></div>
-                            <div class="detail-group"><div class="detail-label">Last Follow-up Date</div><div class="detail-value">${row.date_followup ? UI.formatDate(row.date_followup) : '-'}</div></div>
+                            <div class="detail-group"><div class="detail-label">Date Doc Sent</div><div class="detail-value">${row.date_doc_sent ? UI.formatDate(row.date_doc_sent) : '-'}</div>${row.date_doc_sent_note ? `<p class="date-latest-note">${UI.escapeHtml(row.date_doc_sent_note)}</p>` : ''}</div>
+                            <div class="detail-group"><div class="detail-label">Last Follow-up Date</div><div class="detail-value">${row.date_followup ? UI.formatDate(row.date_followup) : '-'}</div>${row.date_followup_note ? `<p class="date-latest-note">${UI.escapeHtml(row.date_followup_note)}</p>` : ''}</div>
                             <div class="detail-group"><div class="detail-label">Last Updated</div><div class="detail-value">${row.date_updated ? UI.formatDate(row.date_updated) : '-'}</div></div>
                         </div>
-                        <div class="detail-section">Date History</div>
-                        <div class="application-date-history" data-date-history></div>
+                        <button type="button" class="btn-secondary btn-sm" data-view-date-history>View History</button>
                         ${row.category === 'PROPERTY' ? `
                         <div class="detail-section">Property</div>
                         <div class="detail-grid">
@@ -1088,18 +1086,13 @@ const App = {
                                 </div>`).join('')}
                             </div>`;
                         })()}
-                        ${row.notes ? `
-                        <div class="detail-section">Notes</div>
-                        <div class="detail-grid">
-                            <div class="detail-group"><div class="detail-value">${row.notes}</div></div>
-                        </div>` : ''}
                     </div>
                     <div class="modal-footer">
                         <button class="btn-secondary" onclick="this.closest('.modal-overlay').remove()">Close</button>
                 </div>
             </div>`;
             document.body.appendChild(overlay);
-            UI.renderApplicationDateHistory(overlay.querySelector('[data-date-history]'), row.id);
+            overlay.querySelector('[data-view-date-history]').onclick = () => UI.openApplicationDateHistory(row.id, [row.company, row.name_facility || row.type_facility].filter(Boolean).join(' · '));
             overlay.querySelectorAll('[data-view-bank-letter]').forEach(btn => {
                 btn.addEventListener('click', () => openCancellationLetter(decodeURIComponent(btn.dataset.viewBankLetter)));
             });
@@ -1115,7 +1108,7 @@ const App = {
             const selectOptions = typeSelect ? Array.from(typeSelect.options).map(opt => opt.value || opt.textContent) : [];
             const isStandard = selectOptions.includes(row.type_facility);
             
-            let rowData = { ...row };
+            let rowData = { ...row, app_details: UI.applicationDetails(row) };
             if (rowData.status === 'SETTLED') rowData.status = 'DISCHARGED';
             if (row.type_facility && !isStandard) {
                 rowData.type_facility = 'OTHERS';
@@ -1361,6 +1354,7 @@ const App = {
         document.getElementById('app-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const data = UI.getFormData('app-form');
+            if (editingRow?.notes) data.notes = null;
             for (const field of ['date_doc_sent', 'date_followup']) {
                 if (data[`${field}_note`] && !data[field] && !editingRow?.[field]) {
                     UI.showToast('Choose a date for the document sent or follow-up note.', 'error');
@@ -2841,7 +2835,7 @@ const App = {
                                         <div class="modal-header"><h2 id="review-title-${esc(cr.id)}">${esc(cr.payload?.company ?? cr.before_payload?.company ?? 'Application')} · ${esc(cr.payload?.type_facility ?? cr.before_payload?.type_facility ?? 'Facility')}</h2><button type="button" class="modal-close" data-review-close aria-label="Close application details">&times;</button></div>
                                         <div class="modal-body">
                                         ${renderChangeFields(cr)}
-                                        ${cr.record_id ? `<div class="detail-section">Date History</div><div class="application-date-history" data-date-history data-application-id="${esc(cr.record_id)}"></div>` : ''}
+                                        ${cr.record_id ? `<button type="button" class="btn-secondary btn-sm" data-view-date-history data-application-id="${esc(cr.record_id)}">View History</button>` : ''}
                                         ${canReview && cr.requested_by !== Auth.getUser()?.id ? `<div class="form-group"><label for="review-note-${esc(cr.id)}">Review note (optional)</label><textarea id="review-note-${esc(cr.id)}" rows="2" placeholder="Reason or context for this decision"></textarea></div>` : ''}
                                         </div>
                                         <div class="modal-footer"><button type="button" class="btn-secondary" data-review-close>Close</button></div>
@@ -2860,11 +2854,11 @@ const App = {
                 button.addEventListener('click', () => {
                     const details = document.getElementById(button.getAttribute('aria-controls'));
                     details.showModal();
-                    const history = details.querySelector('[data-date-history]');
-                    if (history) UI.renderApplicationDateHistory(history, history.dataset.applicationId);
                 });
             });
             el.querySelectorAll('.review-detail-modal').forEach(dialog => {
+                const historyButton = dialog.querySelector('[data-view-date-history]');
+                if (historyButton) historyButton.onclick = () => UI.openApplicationDateHistory(historyButton.dataset.applicationId, dialog.querySelector('h2').textContent);
                 dialog.querySelectorAll('[data-review-close]').forEach(button => {
                     button.onclick = () => dialog.close();
                 });

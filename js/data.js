@@ -356,7 +356,7 @@ const DB = {
         return true;
     },
 
-    // Application edits always wait for a different user's HOD review.
+    // The edit RPC checks the database role and keeps conflict/history checks atomic.
     async saveChange(entity, action, recordId, payload, summary, original) {
         if (entity === 'application' && action === 'UPDATE') {
             const originalRecord = original || await this.getApplication(recordId);
@@ -367,9 +367,11 @@ const DB = {
                 p_summary: summary || ''
             });
             if (error) throw error;
-            return { queued: !!data, unchanged: !data, data };
+            const queued = data?.status === 'PENDING';
+            if (data && !queued) this._clearCache();
+            return { queued, unchanged: !data, data };
         }
-        if (Auth.isSuperAdmin() && !(entity === 'application' && action === 'CREATE')) {
+        if (Auth.isSuperAdmin()) {
             const data = await this._applyChange(entity, action, recordId, payload || {});
             return { queued: false, data };
         }

@@ -187,6 +187,7 @@ DECLARE
   original_typed jsonb;
   changes jsonb;
   date_field text;
+  assignments text;
   result public.change_requests;
 BEGIN
   IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Sign in to submit changes'; END IF;
@@ -223,6 +224,21 @@ BEGIN
   IF EXISTS (SELECT 1 FROM jsonb_object_keys(changes) k
     WHERE current_record -> k IS DISTINCT FROM original_typed -> k)
   THEN RAISE EXCEPTION 'This application changed. Reload it and submit your edit again'; END IF;
+
+  IF public.is_super_admin() THEN
+    SELECT string_agg(format('%I = r.%I', k, k), ', ') INTO assignments FROM jsonb_object_keys(changes) k;
+    EXECUTE format('UPDATE public.applications a SET %s, updated_at = now()
+      FROM jsonb_populate_record(NULL::public.applications, $1) r WHERE a.id = $2', assignments)
+      USING current_record || changes, p_record_id;
+    -- Return an applied result without creating an approval request.
+    result.entity := 'application';
+    result.action := 'UPDATE';
+    result.status := 'APPROVED';
+    result.record_id := p_record_id;
+    result.applied_record_id := p_record_id;
+    result.payload := changes;
+    RETURN result;
+  END IF;
 
   INSERT INTO change_requests(entity, action, record_id, payload, before_payload,
     summary, status, requested_by, requested_by_email)
