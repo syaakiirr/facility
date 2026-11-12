@@ -5,12 +5,15 @@ const App = {
     pages: {
         dashboard: { label: 'Dashboard', icon: 'grid' },
         applications: { label: 'Applications', icon: 'file-text' },
+        attachments: { label: 'Attachments', icon: 'file-text' },
         companies: { label: 'Companies', icon: 'briefcase' },
         banks: { label: 'Banks & BFR', icon: 'building' },
         reports: { label: 'Reports', icon: 'bar-chart' },
         bos_review: { label: 'HOD Review', icon: 'clipboard' },
         review_history: { label: 'Review History', icon: 'activity' },
+        audit_trail: { label: 'Audit Trail', icon: 'activity' },
         collateral: { label: 'Collateral', icon: 'shield' },
+        users: { label: 'Users', icon: 'users' },
         settings: { label: 'Settings', icon: 'settings' }
     },
 
@@ -67,7 +70,9 @@ const App = {
                     </div>
                     <nav class="sidebar-nav" id="sidebar-nav">
                         <div class="sidebar-nav-label">Main Menu</div>
-                        ${Object.entries(this.pages).map(([key, p]) =>
+                        ${Object.entries(this.pages)
+                            .filter(([key]) => key !== 'users' || Auth.isSuperAdmin())
+                            .map(([key, p]) =>
                             `<div class="sidebar-nav-item" data-page="${key}">
                                 ${this.icons[p.icon]}
                                 <span>${p.label}</span>
@@ -145,12 +150,15 @@ const App = {
             switch (page) {
                 case 'dashboard': await this.renderDashboard(content, isCurrent); break;
                 case 'applications': await this.renderApplications(content, param); break;
+                case 'attachments': await this.renderAttachments(content, isCurrent); break;
                 case 'companies': await this.renderCompanies(content); break;
                 case 'banks': await this.renderBanks(content); break;
                 case 'reports': await this.renderReports(content); break;
                 case 'bos_review': await this.renderBosReview(content); break;
                 case 'review_history': await this.renderReviewHistory(content); break;
+                case 'audit_trail': await this.renderAuditTrail(content, isCurrent); break;
                 case 'collateral': await this.renderCollaterals(content); break;
+                case 'users': await this.renderUsers(content); break;
                 case 'settings': await this.renderSettings(content); break;
             }
         } catch (err) {
@@ -158,6 +166,62 @@ const App = {
             content.innerHTML = `<div class="empty-state"><h3>Error loading page</h3><p>${err.message}</p></div>`;
             console.error(err);
         }
+    },
+
+    async renderAttachments(el, isCurrent = () => true) {
+        const esc = value => UI.escapeHtml(String(value ?? ''));
+        el.innerHTML = '<p role="status">Loading attachments...</p>';
+        let files;
+        try {
+            files = await DB.fetchAttachments();
+        } catch (error) {
+            if (!isCurrent()) return;
+            el.innerHTML = `<div class="empty-state"><h3>Unable to load attachments</h3><p>${esc(error.message)}</p><button class="btn-secondary" id="attachments-retry">Retry</button></div>`;
+            el.querySelector('button').onclick = () => this.renderAttachments(el, isCurrent);
+            return;
+        }
+        if (!isCurrent()) return;
+        el.innerHTML = `<section class="attachments-page">
+            <h2>Attachments</h2>
+            <p>Application files grouped by document type and application, including review submissions you can access.</p>
+            <div class="filter-bar attachments-filters">
+                <div><label for="attachments-search">Search</label><input id="attachments-search" type="search" placeholder="File, application, company or bank"></div>
+                <div><label for="attachments-format">File type</label><select id="attachments-format"><option value="">All file types</option><option>PDF</option><option>Image</option><option>Other</option></select></div>
+                <div><label for="attachments-company">Company</label><select id="attachments-company"><option value="">All companies</option>${[...new Set(files.map(f => f.company))].map(c => `<option>${esc(c)}</option>`).join('')}</select></div>
+                <button class="btn-secondary" id="attachments-clear">Clear filters</button>
+            </div>
+            <p id="attachments-count" role="status"></p><div id="attachments-list"></div>
+        </section>`;
+        const search = el.querySelector('#attachments-search');
+        const format = el.querySelector('#attachments-format');
+        const company = el.querySelector('#attachments-company');
+        const render = () => {
+            const query = search.value.trim().toLowerCase();
+            const visible = files.filter(f => (!format.value || f.format === format.value) && (!company.value || f.company === company.value) &&
+                [f.name, f.application, f.company, f.bank, f.year, f.type, f.state].join(' ').toLowerCase().includes(query));
+            el.querySelector('#attachments-count').textContent = `${visible.length} of ${files.length} attachments`;
+            const groups = new Map();
+            visible.forEach(file => {
+                const key = JSON.stringify([file.type, file.applicationId, file.company, file.application]);
+                if (!groups.has(key)) groups.set(key, []);
+                groups.get(key).push(file);
+            });
+            el.querySelector('#attachments-list').innerHTML = visible.length ? [...groups.values()].map(group => {
+                const f = group[0];
+                return `<section class="card attachment-group"><div class="card-header"><div>
+                    <p>${esc(f.type)}</p><h3>${esc(f.application)}</h3>
+                    <p>${esc([f.company, f.bank, f.year].filter(Boolean).join(' · '))}</p>
+                    <p class="attachment-reference">Application reference: ${esc(f.applicationId)}</p>
+                </div></div><ul class="attachment-files">${group.map(file => `<li>
+                    <div><strong>${esc(file.name)}</strong><p>${esc(file.format)} · ${esc(file.state)}</p></div>
+                    <a class="btn-secondary" href="${esc(file.url)}" target="_blank" rel="noopener noreferrer" aria-label="${esc('Open ' + file.name + ' (new tab)')}">Open file</a>
+                </li>`).join('')}</ul></section>`;
+            }).join('') : `<div class="empty-state"><h3>${files.length ? 'No matching attachments' : 'No attachments yet'}</h3><p>${files.length ? 'Try another search or clear the filters.' : 'Files uploaded through application forms will appear here after the application or review request is saved.'}</p></div>`;
+        };
+        search.oninput = render;
+        format.onchange = company.onchange = render;
+        el.querySelector('#attachments-clear').onclick = () => { search.value = format.value = company.value = ''; render(); };
+        render();
     },
 
     async isPageAllowed(page) {
@@ -590,7 +654,7 @@ const App = {
         // Dashboard drill-downs: group:<key> / status:<value> / bank:<name> / company:<name>
         const statusGroups = {
             inforce: ['IN FORCE'],
-            progress: ['IN PROGRESS', 'PREPARATION DOC BY FINANCE', 'SUBMISSION DOC TO BANK'],
+            progress: ['IN PROGRESS', 'PREPARATION DOC BY FINANCE', 'SUBMISSION DOC TO BANK', 'REVIEW BY BANK'],
             hold: ['ON HOLD', 'PENDING', 'REVIEW BY HOD', 'REVIEW BY BOS'],
             pending: ['PENDING'],
             discharged: ['DISCHARGED', 'SETTLED'],
@@ -627,7 +691,7 @@ const App = {
                 <select id="filter-status"><option value="">All Status</option>
                     <option>IN FORCE</option><option>DISCHARGED</option><option>DONE</option><option>IN PROGRESS</option><option>PENDING</option><option>ON HOLD</option><option>REVIEW BY HOD</option>
                     <option>PREPARATION DOC BY FINANCE</option><option>SUBMISSION DOC TO BANK</option>
-                    <option>DECLINED</option><option>DECLINED BY BANK</option><option>DECLINED BY COMPANY</option><option>CANCELLED BY BANK</option>
+                    <option>REVIEW BY BANK</option><option>DECLINED BY BANK</option><option>DECLINED BY COMPANY</option><option>CANCELLED BY BANK</option>
                 </select>
                 <select id="filter-bank"><option value="">All Banks</option>
                     ${bankNames.map(b => `<option>${b}</option>`).join('')}
@@ -721,8 +785,30 @@ const App = {
                                     <option>IN FORCE</option><option>DISCHARGED</option><option>IN PROGRESS</option><option>DONE</option><option>PENDING</option><option>ON HOLD</option>
                                     <option>REVIEW BY HOD</option>
                                     <option>PREPARATION DOC BY FINANCE</option><option>SUBMISSION DOC TO BANK</option>
-                                    <option>DECLINED</option><option>DECLINED BY BANK</option><option>DECLINED BY COMPANY</option><option>CANCELLED BY BANK</option>
+                                    <option>REVIEW BY BANK</option><option>DECLINED BY BANK</option><option>DECLINED BY COMPANY</option><option>CANCELLED BY BANK</option>
                                 </select>
+                            </div>
+                            <div class="form-group" id="discharge-note-group" style="display:none">
+                                <label>Discharge Note</label>
+                                <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-2);font-weight:500">
+                                    <input type="checkbox" name="discharge_note" id="discharge-note-check" style="width:auto" /> Yes — discharge note issued
+                                </label>
+                                <div id="discharge-note-text-group" style="display:none;margin-top:10px">
+                                    <label>Discharge Note Details</label>
+                                    <input name="discharge_note_text" id="discharge-note-text" placeholder="Enter discharge note details" />
+                                </div>
+                            </div>
+                            <div class="form-group" id="bank-cancel-letter-group" style="display:none">
+                                <label>Cancellation Letter from Bank</label>
+                                <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-2);font-weight:500">
+                                    <input type="checkbox" id="bank-cancel-letter-check" style="width:auto" /> Yes — cancellation letter received from bank
+                                </label>
+                            </div>
+                            <div class="form-group" id="bank-cancel-upload-group" style="display:none">
+                                <label>Upload Cancellation Letter</label>
+                                <input type="file" name="bank_cancellation_letter_file" accept=".pdf,application/pdf,image/*" />
+                                <p class="form-hint">PDF or image, max 5MB.</p>
+                                <div class="form-hint" id="bank-cancel-existing" style="display:none"></div>
                             </div>
                             <div class="form-group"><label>Application Details</label><textarea name="app_details" rows="2"></textarea></div>
                             <div class="form-row">
@@ -730,8 +816,9 @@ const App = {
                             </div>
                             <div class="form-row">
                                 <div class="form-group"><label>Date Doc Sent</label><input type="date" name="date_doc_sent" /></div>
-                                <div class="form-group"><label>Date Follow Up</label><input type="date" name="date_followup" /></div>
+                                <div class="form-group"><label>Last Follow-up Date</label><input type="date" name="date_followup" /></div>
                             </div>
+                            <p class="date-history-help">Previous document sent and follow-up dates are kept in Date History after approval.</p>
                             <div class="form-row">
                                 <div class="form-group"><label>Total Requested (RM)</label><input type="number" name="total_requested" step="0.01" /></div>
                                 <div class="form-group"><label>Total Approved (RM)</label><input type="number" name="total_approved" step="0.01" /></div>
@@ -747,12 +834,6 @@ const App = {
                             <div class="form-group" id="decline-reason-group" style="display:none">
                                 <label>Decline Reason</label>
                                 <input name="decline_reason" placeholder="Why was this declined?" />
-                            </div>
-                            <div class="form-group" id="discharge-note-group" style="display:none">
-                                <label>Discharged Note</label>
-                                <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-2);font-weight:500">
-                                    <input type="checkbox" name="discharge_note" style="width:auto" /> Yes — discharged note issued
-                                </label>
                             </div>
                             <div class="form-group" id="cancel-reason-group" style="display:none">
                                 <label>Cancellation Reason (Bank)</label>
@@ -784,6 +865,16 @@ const App = {
 
             `;
 
+        const syncDischargeNote = () => {
+            const cb = document.getElementById('discharge-note-check');
+            const textGroup = document.getElementById('discharge-note-text-group');
+            const textInput = document.getElementById('discharge-note-text');
+            const hasNote = !!(cb && cb.checked);
+            if (textGroup) textGroup.style.display = hasNote ? '' : 'none';
+            if (textInput && !hasNote) textInput.value = '';
+        };
+        document.getElementById('discharge-note-check')?.addEventListener('change', syncDischargeNote);
+
         // Apply bank/company drill-down presets (after form fields exist)
         if (linkParam && linkParam.startsWith('bank:')) {
             const name = decodeURIComponent(linkParam.slice(5));
@@ -798,6 +889,7 @@ const App = {
         }
 
         let editingId = null;
+        let editingRow = null;
         const loadApps = async () => {
             const filters = {};
             const search = document.getElementById('app-search')?.value;
@@ -840,7 +932,7 @@ const App = {
                         if (['ON HOLD','PENDING','PREPARATION DOC BY FINANCE','SUBMISSION DOC TO BANK'].includes(r.status)) return r.hold_reason || '-';
                         if (['DECLINED','DECLINED BY BANK','DECLINED BY COMPANY'].includes(r.status)) return r.decline_reason || '-';
                         if (r.status === 'CANCELLED BY BANK') return r.cancel_reason || '-';
-                        if (r.status === 'DISCHARGED' || r.status === 'SETTLED') return r.discharge_note ? 'Discharge note issued' : '-';
+                        if (r.status === 'DISCHARGED' || r.status === 'SETTLED') return (r.discharge_note === true || r.discharge_note === 'true') ? (r.discharge_note_text || 'Discharge note issued') : '-';
                         return '-';
                     }},
                     { label: 'Progress', render: (v, r) => UI.progressHtml(r.progress, r.status) }
@@ -870,6 +962,16 @@ const App = {
             );
         container.innerHTML = '';
         container.appendChild(table);
+        };
+
+        const openCancellationLetter = async (path) => {
+            if (!path) return;
+            try {
+                const url = await DB.getCancellationLetterUrl(path);
+                window.open(url, '_blank', 'noopener');
+            } catch (err) {
+                UI.showToast('Error opening letter: ' + err.message, 'error');
+            }
         };
 
         const openDetailModal = (row) => {
@@ -913,9 +1015,11 @@ const App = {
                             <div class="detail-group"><div class="detail-label">Year</div><div class="detail-value">${row.year_application || '-'}</div></div>
                             <div class="detail-group"><div class="detail-label">Annual Review (Bank)</div><div class="detail-value">${row.annual_review || (row.date_updated ? new Date(row.date_updated).toLocaleDateString('en-GB', { month: 'long' }) + ' (Annual Review)' : '-')}</div></div>
                             <div class="detail-group"><div class="detail-label">Date Doc Sent</div><div class="detail-value">${row.date_doc_sent ? UI.formatDate(row.date_doc_sent) : '-'}</div></div>
-                            <div class="detail-group"><div class="detail-label">Date Follow Up</div><div class="detail-value">${row.date_followup ? UI.formatDate(row.date_followup) : '-'}</div></div>
+                            <div class="detail-group"><div class="detail-label">Last Follow-up Date</div><div class="detail-value">${row.date_followup ? UI.formatDate(row.date_followup) : '-'}</div></div>
                             <div class="detail-group"><div class="detail-label">Last Updated</div><div class="detail-value">${row.date_updated ? UI.formatDate(row.date_updated) : '-'}</div></div>
                         </div>
+                        <div class="detail-section">Date History</div>
+                        <div class="application-date-history" data-date-history></div>
                         ${row.category === 'PROPERTY' ? `
                         <div class="detail-section">Property</div>
                         <div class="detail-grid">
@@ -940,13 +1044,30 @@ const App = {
                             <div class="detail-grid">
                                 <div class="detail-group"><div class="detail-label">Cancelled by Bank — Reason</div><div class="detail-value" style="color:var(--red)">${row.cancel_reason}</div></div>
                             </div>`;
-                            if ((row.status === 'DISCHARGED' || row.status === 'SETTLED') && row.discharge_note) return `
+                            if ((row.status === 'DISCHARGED' || row.status === 'SETTLED') && (row.discharge_note === true || row.discharge_note === 'true')) return `
                             <div class="detail-section">Discharge Info</div>
                             <div class="detail-grid">
-                                <div class="detail-group"><div class="detail-label">Discharged Note</div><div class="detail-value">Issued</div></div>
+                                <div class="detail-group"><div class="detail-label">Discharge Note</div><div class="detail-value">Issued</div></div>
+                                ${row.discharge_note_text ? `<div class="detail-group"><div class="detail-label">Discharge Note Details</div><div class="detail-value">${UI.escapeHtml(row.discharge_note_text)}</div></div>` : ''}
                             </div>`;
                             return '';
                         })()}
+                        ${row.status === 'DECLINED BY COMPANY' ? `
+                        <div class="detail-section" style="color:var(--red)">Cancellation Letter from Bank</div>
+                        <div class="detail-grid">
+                            <div class="detail-group">
+                                <div class="detail-label">Letter Received</div>
+                                <div class="detail-value">${(row.bank_cancellation_letter === true || row.bank_cancellation_letter === 'true') ? 'Yes' : 'No'}</div>
+                            </div>
+                            ${(row.bank_cancellation_letter === true || row.bank_cancellation_letter === 'true') && row.bank_cancellation_letter_path ? `
+                            <div class="detail-group">
+                                <div class="detail-label">Uploaded Letter</div>
+                                <div class="detail-value">
+                                    <button type="button" class="btn-secondary btn-xs" data-view-bank-letter="${encodeURIComponent(row.bank_cancellation_letter_path)}">View letter</button>
+                                    <span style="margin-left:6px;font-size:11px;color:var(--text-3)">${UI.escapeHtml(row.bank_cancellation_letter_name || '')}</span>
+                                </div>
+                            </div>` : ''}
+                        </div>` : ''}
                         ${(() => {
                             let officers = row.officers;
                             if (typeof officers === 'string' && officers) { try { officers = JSON.parse(officers); } catch (_) { officers = []; } }
@@ -972,10 +1093,15 @@ const App = {
                 </div>
             </div>`;
             document.body.appendChild(overlay);
+            UI.renderApplicationDateHistory(overlay.querySelector('[data-date-history]'), row.id);
+            overlay.querySelectorAll('[data-view-bank-letter]').forEach(btn => {
+                btn.addEventListener('click', () => openCancellationLetter(decodeURIComponent(btn.dataset.viewBankLetter)));
+            });
         };
 
         const openEditModal = async (row) => {
             editingId = row.id;
+            editingRow = row;
             document.getElementById('modal-app-title').textContent = 'Edit Application';
             document.getElementById('btn-save-app').textContent = 'Update Application';
             
@@ -992,6 +1118,13 @@ const App = {
                 rowData.type_facility_custom = '';
             }
             
+            const legacyStatusSelect = document.querySelector('#app-form [name="status"]');
+            legacyStatusSelect.querySelector('[data-legacy-status]')?.remove();
+            if (rowData.status === 'DECLINED') {
+                const legacyStatus = new Option('DECLINED (previous status)', 'DECLINED');
+                legacyStatus.dataset.legacyStatus = 'true';
+                legacyStatusSelect.add(legacyStatus);
+            }
             UI.setFormData('app-form', rowData);
             
             if (typeSelect) {
@@ -1002,6 +1135,32 @@ const App = {
             statusSelect.dispatchEvent(new Event('change'));
             const dischargeCb = document.querySelector('#app-form [name="discharge_note"]');
             if (dischargeCb) dischargeCb.checked = rowData.discharge_note === true || rowData.discharge_note === 'true';
+            const dischargeText = document.querySelector('#app-form [name="discharge_note_text"]');
+            if (dischargeText) dischargeText.value = rowData.discharge_note_text || '';
+            syncDischargeNote();
+
+            const letterCb = document.getElementById('bank-cancel-letter-check');
+            if (letterCb) letterCb.checked = row.bank_cancellation_letter === true || row.bank_cancellation_letter === 'true';
+            syncBankCancelUpload();
+            const existingLetter = document.getElementById('bank-cancel-existing');
+            if (existingLetter) {
+                existingLetter.innerHTML = '';
+                if (row.bank_cancellation_letter_path) {
+                    const label = document.createElement('span');
+                    label.textContent = `Existing letter: ${row.bank_cancellation_letter_name || 'uploaded file'} — `;
+                    const viewBtn = document.createElement('button');
+                    viewBtn.type = 'button';
+                    viewBtn.className = 'btn-secondary btn-xs';
+                    viewBtn.textContent = 'View';
+                    viewBtn.addEventListener('click', () => openCancellationLetter(row.bank_cancellation_letter_path));
+                    existingLetter.appendChild(label);
+                    existingLetter.appendChild(viewBtn);
+                    existingLetter.style.display = '';
+                } else {
+                    existingLetter.style.display = 'none';
+                }
+            }
+
             setOfficers(parseOfficers(row.officers));
             UI.openModal('modal-app');
         };
@@ -1051,20 +1210,44 @@ const App = {
             'REVIEW BY BOS': 80,
             'PREPARATION DOC BY FINANCE': 20,
             'SUBMISSION DOC TO BANK': 70,
+            'REVIEW BY BANK': 70,
             'DECLINED': 0,
             'DECLINED BY BANK': 0,
             'DECLINED BY COMPANY': 0,
             'CANCELLED BY BANK': 0
         };
+        const syncBankCancelUpload = () => {
+            const cb = document.getElementById('bank-cancel-letter-check');
+            const uploadGroup = document.getElementById('bank-cancel-upload-group');
+            const received = !!(cb && cb.checked);
+            if (uploadGroup) uploadGroup.style.display = received ? '' : 'none';
+            if (!received) {
+                const fileInput = document.querySelector('#app-form [name="bank_cancellation_letter_file"]');
+                if (fileInput) fileInput.value = '';
+            }
+        };
+
+        document.getElementById('bank-cancel-letter-check')?.addEventListener('change', syncBankCancelUpload);
+
         document.querySelector('#app-form [name="status"]').addEventListener('change', (e) => {
             const isHold = e.target.value === 'ON HOLD' || e.target.value === 'PENDING' || e.target.value === 'PREPARATION DOC BY FINANCE' || e.target.value === 'SUBMISSION DOC TO BANK';
             const isDeclined = e.target.value === 'DECLINED' || e.target.value === 'DECLINED BY BANK' || e.target.value === 'DECLINED BY COMPANY';
             const isDischarged = e.target.value === 'DISCHARGED' || e.target.value === 'SETTLED';
             const isCancelled = e.target.value === 'CANCELLED BY BANK';
+            const isDeclinedByCompany = e.target.value === 'DECLINED BY COMPANY';
             document.getElementById('hold-reason-group').style.display = isHold ? '' : 'none';
             document.getElementById('decline-reason-group').style.display = isDeclined ? '' : 'none';
             document.getElementById('discharge-note-group').style.display = isDischarged ? '' : 'none';
             document.getElementById('cancel-reason-group').style.display = isCancelled ? '' : 'none';
+            document.getElementById('bank-cancel-letter-group').style.display = isDeclinedByCompany ? '' : 'none';
+            if (!isDeclinedByCompany) {
+                const letterCb = document.getElementById('bank-cancel-letter-check');
+                if (letterCb) letterCb.checked = false;
+                const existingLetter = document.getElementById('bank-cancel-existing');
+                if (existingLetter) { existingLetter.style.display = 'none'; existingLetter.innerHTML = ''; }
+            }
+            syncBankCancelUpload();
+            syncDischargeNote();
         });
 
         // Officers (collapsible, many per application)
@@ -1145,13 +1328,18 @@ const App = {
 
         document.getElementById('btn-add-app').addEventListener('click', () => {
             editingId = null;
+            editingRow = null;
             document.getElementById('modal-app-title').textContent = 'New Application';
             document.getElementById('btn-save-app').textContent = 'Save Application';
             UI.resetForm('app-form');
+            document.querySelector('#app-form [data-legacy-status]')?.remove();
+            const existingLetter = document.getElementById('bank-cancel-existing');
+            if (existingLetter) { existingLetter.style.display = 'none'; existingLetter.innerHTML = ''; }
             setOfficers([]);
             if (typeSelect) {
                 typeSelect.dispatchEvent(new Event('change'));
             }
+            document.querySelector('#app-form [name="status"]')?.dispatchEvent(new Event('change'));
             UI.openModal('modal-app');
         });
 
@@ -1170,21 +1358,54 @@ const App = {
                     data.collateral = selectedOpt.text;
                 } else {
                     data.collateral = '';
-                    delete data.collateral_id;
+                    data.collateral_id = null;
                 }
             }
             data.progress = progressMap[data.status] !== undefined ? progressMap[data.status] : 0;
+            const isDischarged = data.status === 'DISCHARGED' || data.status === 'SETTLED';
             const dischargeCb = document.querySelector('#app-form [name="discharge_note"]');
-            data.discharge_note = !!(dischargeCb && dischargeCb.checked);
+            data.discharge_note = isDischarged ? !!(dischargeCb && dischargeCb.checked) : false;
+            const dischargeText = document.getElementById('discharge-note-text');
+            data.discharge_note_text = data.discharge_note ? (dischargeText?.value.trim() || null) : null;
             data.officers = collectOfficers();
+
+            delete data.bank_cancellation_letter_file;
+            const isDeclinedByCompany = data.status === 'DECLINED BY COMPANY';
+            const letterCb = document.getElementById('bank-cancel-letter-check');
+            const letterReceived = !!(isDeclinedByCompany && letterCb && letterCb.checked);
+            const letterFile = document.querySelector('#app-form [name="bank_cancellation_letter_file"]')?.files?.[0] || null;
+            const existingLetterPath = editingRow?.bank_cancellation_letter_path || null;
+            const existingLetterName = editingRow?.bank_cancellation_letter_name || null;
+
+            if (letterReceived) {
+                data.bank_cancellation_letter = true;
+                if (letterFile) {
+                    data.bank_cancellation_letter_name = letterFile.name;
+                } else if (existingLetterPath) {
+                    data.bank_cancellation_letter_path = existingLetterPath;
+                    data.bank_cancellation_letter_name = existingLetterName;
+                } else {
+                    UI.showToast('Please upload the cancellation letter from the bank.', 'error');
+                    return;
+                }
+            } else {
+                data.bank_cancellation_letter = false;
+                data.bank_cancellation_letter_path = null;
+                data.bank_cancellation_letter_name = null;
+            }
+
             const btn = document.getElementById('btn-save-app');
             btn.disabled = true;
             btn.textContent = 'Saving...';
             try {
+                if (isDeclinedByCompany && data.bank_cancellation_letter && letterFile) {
+                    if (letterFile.size > 5 * 1024 * 1024) throw new Error('Cancellation letter must be 5MB or smaller');
+                    data.bank_cancellation_letter_path = await DB.uploadCancellationLetter(letterFile);
+                }
                 const isEdit = !!editingId;
                 const summary = `${isEdit ? 'Edit' : 'New'} application: ${data.company || '-'} — ${data.type_facility || '-'}${data.bank ? ' (' + data.bank + ')' : ''}`;
-                const res = await DB.saveChange('application', isEdit ? 'UPDATE' : 'CREATE', editingId, data, summary);
-                UI.showToast(res.queued ? 'Submitted for HOD review' : (isEdit ? 'Application updated successfully' : 'Application added successfully'), 'success');
+                const res = await DB.saveChange('application', isEdit ? 'UPDATE' : 'CREATE', editingId, data, summary, editingRow);
+                UI.showToast(res.unchanged ? 'No changes to submit' : res.queued ? 'Submitted for HOD review. Original data stays unchanged until approved.' : (isEdit ? 'Application updated successfully' : 'Application added successfully'), 'success');
                 UI.closeModal('modal-app');
                 loadApps();
             } catch (err) {
@@ -1545,22 +1766,31 @@ const App = {
 
         const declineEntries = Object.entries(stats.declineReasons || {}).sort((a, b) => b[1] - a[1]);
         const declineTotal = declineEntries.reduce((s, [, c]) => s + c, 0);
+        const declinedApps = (stats.apps || [])
+            .filter(a => ['DECLINED', 'DECLINED BY BANK', 'DECLINED BY COMPANY'].includes(a.status) ||
+                (a.decline_reason && a.decline_reason.trim()))
+            .map(a => ({ ...a, _note: a.decline_reason || a.cancel_reason || 'No reason recorded' }))
+            .sort((a, b) => String(a.company || '').localeCompare(String(b.company || '')));
         insights.push({
             tag: 'Factor 01',
             title: 'Declined Applications',
             value: declineTotal > 0 ? `${declineTotal} Declined` : 'No Declines',
             reason: declineEntries.length
                 ? declineEntries.map(([r, c]) => `${r} (${c})`).join(' · ')
-                : 'No decline reason recorded'
+                : 'No decline reason recorded',
+            apps: declinedApps
         });
 
         const holdMap = {};
+        const holdApps = [];
         (stats.apps || []).forEach(a => {
             if (holdStatuses.includes(a.status)) {
                 const r = (a.hold_reason || 'No reason stated').trim();
                 holdMap[r] = (holdMap[r] || 0) + 1;
+                holdApps.push({ ...a, _note: r });
             }
         });
+        holdApps.sort((a, b) => String(a.company || '').localeCompare(String(b.company || '')));
         const holdEntries = Object.entries(holdMap).sort((a, b) => b[1] - a[1]);
         const holdTotal = holdEntries.reduce((s, [, c]) => s + c, 0);
         insights.push({
@@ -1569,28 +1799,41 @@ const App = {
             value: holdTotal > 0 ? `${holdTotal} On Hold` : 'None On Hold',
             reason: holdEntries.length
                 ? holdEntries.map(([r, c]) => `${r} (${c})`).join(' · ')
-                : 'No hold reason recorded'
+                : 'No hold reason recorded',
+            apps: holdApps
         });
 
         const stuck = [...(stats.stuckApps || [])].sort((a, b) => b.days_stuck - a.days_stuck);
         const topStuck = stuck[0];
+        const stuckApps = stuck.map(a => ({
+            ...a,
+            _note: `${a.days_stuck} days — ${a.hold_reason || a.decline_reason || a.app_details || a.status || 'No reason stated'}`
+        }));
         insights.push({
             tag: 'Factor 03',
             title: 'SLA Bottleneck (>14 Days)',
             value: stuck.length > 0 ? `${stuck.length} Stuck` : 'No Bottleneck',
             reason: topStuck
                 ? `${topStuck.company || '-'} — ${topStuck.days_stuck} days — ${topStuck.hold_reason || topStuck.decline_reason || topStuck.app_details || topStuck.status || 'No reason stated'}`
-                : `Average SLA ${stats.avgSlaDays} days`
+                : `Average SLA ${stats.avgSlaDays} days`,
+            apps: stuckApps
         });
 
         const risk = stats.topCompanyRisk || { name: '-', percent: 0, requested: 0 };
+        const riskApps = risk.name && risk.name !== '-'
+            ? (stats.apps || [])
+                .filter(a => a.company === risk.name)
+                .map(a => ({ ...a, _note: `${risk.percent}% of portfolio exposure` }))
+                .sort((a, b) => (Number(b.total_requested) || 0) - (Number(a.total_requested) || 0))
+            : [];
         insights.push({
             tag: 'Factor 04',
             title: 'Concentration Risk',
             value: risk.percent ? `${risk.percent}% Exposure` : 'Low',
             reason: risk.percent >= 30
                 ? `Single-client exposure above 30% threshold — ${risk.name} (${UI.formatCurrency(risk.requested)})`
-                : (risk.name && risk.name !== '-' ? `Largest client exposure — ${risk.name} (${risk.percent}%)` : 'No dominant client exposure')
+                : (risk.name && risk.name !== '-' ? `Largest client exposure — ${risk.name} (${risk.percent}%)` : 'No dominant client exposure'),
+            apps: riskApps
         });
 
         return insights;
@@ -1600,8 +1843,6 @@ const App = {
         const stats = await DB.getDashboardStats();
         const { bankStats } = await DB.getBankStats(stats.apps);
         const insights = this.buildReportInsights(stats);
-        const insightColors = ['#dc2626', '#d97706', '#2563eb', '#8b5cf6'];
-        const overallRate = stats.totalRequested > 0 ? Math.round((stats.totalApproved / stats.totalRequested) * 100) : 0;
         const stuckCount = stats.stuckApps ? stats.stuckApps.length : 0;
         const hasRiskConcentration = stats.topCompanyRisk && stats.topCompanyRisk.percent > 30;
 
@@ -1626,7 +1867,7 @@ const App = {
                 <div class="insight-alert-content">
                     <div class="insight-alert-title" style="color:#92400e">Operational SLA Alert: ${stuckCount} Stuck Applications (>14 Days)</div>
                     <div class="insight-alert-desc" style="color:#78350f">
-                        There are ${stuckCount} financing applications under active processing for over 14 days without decision updates. Review bottleneck items below.
+                        There are ${stuckCount} financing applications under active processing for over 14 days without decision updates.
                     </div>
                 </div>
             </div>
@@ -1645,47 +1886,6 @@ const App = {
                 </div>
             </div>
             ` : ''}
-
-            <div class="report-summary-grid" style="grid-template-columns:repeat(5,1fr)">
-                <div class="report-summary-card">
-                    <div class="report-summary-label">Total Applications</div>
-                    <div class="report-summary-val">${stats.total}</div>
-                </div>
-                <div class="report-summary-card">
-                    <div class="report-summary-label">Average SLA Turnaround</div>
-                    <div class="report-summary-val">${stats.avgSlaDays} <span style="font-size:12px;font-weight:500;color:var(--text-3)">days</span></div>
-                </div>
-                <div class="report-summary-card">
-                    <div class="report-summary-label">Total Requested</div>
-                    <div class="report-summary-val">${UI.formatCurrency(stats.totalRequested)}</div>
-                </div>
-                <div class="report-summary-card">
-                    <div class="report-summary-label">Total Approved</div>
-                    <div class="report-summary-val" style="color:var(--green)">${UI.formatCurrency(stats.totalApproved)}</div>
-                </div>
-                <div class="report-summary-card">
-                    <div class="report-summary-label">Overall Approval Rate</div>
-                    <div class="report-summary-val">${overallRate}%</div>
-                </div>
-            </div>
-
-            <div class="card" style="margin-bottom:24px">
-                <div class="card-header"><div class="card-header-title">Key Factors &amp; Highlighted Issues</div></div>
-                <div class="card-body">
-                    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px">
-                        ${insights.map((ins, i) => `
-                        <div style="border:1px solid var(--border);border-left:3px solid ${insightColors[i]};border-radius:10px;padding:14px">
-                            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px">
-                                <span style="font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--text-3)">${ins.tag}</span>
-                                <span style="font-size:15px;font-weight:800;font-family:var(--font-mono);color:${insightColors[i]}">${ins.value}</span>
-                            </div>
-                            <div style="font-size:13px;font-weight:700;color:var(--text-1);margin-bottom:8px">${ins.title}</div>
-                            <div style="font-size:10px;font-weight:700;letter-spacing:.06em;color:var(--text-3);margin-bottom:3px">Reason</div>
-                            <div style="font-size:12px;color:var(--text-2);line-height:1.5">${ins.reason}</div>
-                        </div>`).join('')}
-                    </div>
-                </div>
-            </div>
 
             <div class="grid-2" style="margin-bottom:24px">
                 <div class="card"><div class="card-header"><div class="card-header-title">Applications Trend by Year</div></div><div class="card-body"><div class="chart-container" id="chart-year"></div></div></div>
@@ -1790,123 +1990,219 @@ const App = {
                 const dateStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
                 const U = (s) => String(s ?? '').toUpperCase();
 
+                const cell = 'padding:6px 8px;border:1px solid #e2e8f0;font-size:8.5px;vertical-align:top;';
+                const cellCenter = cell + 'text-align:center;';
+                const cellRight = cell + 'text-align:right;';
+                const zebra = (i) => (i % 2 === 0 ? '#ffffff' : '#f8fafc');
+
                 const top5Banks = entries.slice(0, 5);
-                const bankRows = top5Banks.map(([name, s]) => {
+                const bankRows = top5Banks.map(([name, s], i) => {
                     const r = s.count > 0 ? Math.round((s.done / s.count) * 100) : 0;
                     const a = s.requested > 0 ? Math.round((s.approved / s.requested) * 100) : 0;
-                    return `<tr><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px"><b>${name}</b></td><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px;text-align:center">${s.count}</td><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px;text-align:center;color:green">${s.done}</td><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px;text-align:center;color:red">${s.declined}</td><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px;text-align:center">${s.avgSla||10}d</td><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px;text-align:center">${r}%</td><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px;text-align:right">${UI.formatCurrency(s.requested)}</td><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px;text-align:right;color:green">${UI.formatCurrency(s.approved)}</td><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px;text-align:right">${a}%</td></tr>`;
+                    return `<tr style="background:${zebra(i)}">` +
+                        `<td style="${cell}font-weight:700">${name}</td>` +
+                        `<td style="${cellCenter}">${s.count}</td>` +
+                        `<td style="${cellCenter}color:#15803d;font-weight:700">${s.done}</td>` +
+                        `<td style="${cellCenter}color:#b91c1c">${s.declined}</td>` +
+                        `<td style="${cellCenter}">${s.avgSla || 10}d</td>` +
+                        `<td style="${cellCenter}">${r}%</td>` +
+                        `<td style="${cellRight}">${UI.formatCurrency(s.requested)}</td>` +
+                        `<td style="${cellRight}color:#15803d">${UI.formatCurrency(s.approved)}</td>` +
+                        `<td style="${cellRight}font-weight:700">${a}%</td>` +
+                        `</tr>`;
                 }).join('');
 
-                const monthlyRows = Object.entries(stats.monthlyCounts || {}).map(([m, d]) => {
+                const monthlyRows = Object.entries(stats.monthlyCounts || {}).map(([m, d], i) => {
                     const r = d.requested > 0 ? Math.round((d.approved / d.requested) * 100) : 0;
-                    return `<tr><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px"><b>${m}</b></td><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px;text-align:center">${d.total}</td><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px;text-align:center;color:green">${d.done}</td><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px;text-align:center;color:red">${d.declined}</td><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px;text-align:right">${UI.formatCurrency(d.requested)}</td><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px;text-align:right;color:green">${UI.formatCurrency(d.approved)}</td><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px;text-align:right">${r}%</td></tr>`;
+                    return `<tr style="background:${zebra(i)}">` +
+                        `<td style="${cell}font-weight:700">${m}</td>` +
+                        `<td style="${cellCenter}">${d.total}</td>` +
+                        `<td style="${cellCenter}color:#15803d">${d.done}</td>` +
+                        `<td style="${cellCenter}color:#b91c1c">${d.declined}</td>` +
+                        `<td style="${cellRight}">${UI.formatCurrency(d.requested)}</td>` +
+                        `<td style="${cellRight}color:#15803d">${UI.formatCurrency(d.approved)}</td>` +
+                        `<td style="${cellRight}font-weight:700">${r}%</td>` +
+                        `</tr>`;
                 }).join('');
 
                 const collMap = {};
-                stats.apps.forEach(a => { const c = a.collateral || 'None'; collMap[c] = (collMap[c]||0)+1; });
-                const collRows = Object.entries(collMap).sort((a,b)=>b[1]-a[1]).map(([n,c]) => `<tr><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px"><b>${n}</b></td><td style="padding:4px 6px;border:1px solid #ccc;font-size:10px;text-align:center">${c}</td></tr>`).join('');
+                stats.apps.forEach(a => { const c = a.collateral || 'None'; collMap[c] = (collMap[c] || 0) + 1; });
+                const collRows = Object.entries(collMap).sort((a, b) => b[1] - a[1]).map(([n, c], i) =>
+                    `<tr style="background:${zebra(i)}"><td style="${cell}font-weight:700">${n}</td><td style="${cellCenter}">${c}</td></tr>`
+                ).join('');
 
                 const insightRows = insights.map((ins, i) =>
-                    '<tr>' +
-                    '<td style="padding:4px 6px;border:1px solid #ccc;font-size:9px;text-align:center;font-weight:700;color:#666">' + (i + 1) + '</td>' +
-                    '<td style="padding:4px 6px;border:1px solid #ccc;font-size:9px;text-align:left"><b>' + ins.title + '</b></td>' +
-                    '<td style="padding:4px 6px;border:1px solid #ccc;font-size:9px;text-align:center;font-weight:700;color:#2563eb">' + ins.value + '</td>' +
-                    '<td style="padding:4px 6px;border:1px solid #ccc;font-size:9px;text-align:left">' + ins.reason + '</td>' +
-                    '</tr>').join('');
+                    `<tr style="background:${zebra(i)}">` +
+                    `<td style="${cellCenter}font-weight:800;color:#64748b">0${i + 1}</td>` +
+                    `<td style="${cell}font-weight:700">${ins.title}</td>` +
+                    `<td style="${cellCenter}font-weight:800;color:#2563eb">${ins.value}</td>` +
+                    `<td style="${cell}color:#334155">${ins.reason}</td>` +
+                    `</tr>`).join('');
+
+                const insightAppRows = insights.flatMap((ins) =>
+                    (ins.apps || []).map(a => ({ ins, a }))
+                );
+                const appRowsHtml = (rows) => rows.map(({ ins, a }, i) =>
+                    `<tr style="background:${zebra(i)}">` +
+                    `<td style="${cellCenter}font-weight:700;color:#64748b">${ins.tag}</td>` +
+                    `<td style="${cell}font-weight:700">${U(a.company || '-')}</td>` +
+                    `<td style="${cell}">${U(a.name_facility || a.type_facility || '-')}</td>` +
+                    `<td style="${cellCenter}">${U(a.status || '-')}</td>` +
+                    `<td style="${cell}color:#334155">${U(a._note || '-')}</td>` +
+                    `<td style="${cellRight}">${UI.formatCurrency(a.total_requested)}</td>` +
+                    `</tr>`).join('') ||
+                    `<tr><td style="${cellCenter}color:#64748b" colspan="6">No applications recorded</td></tr>`;
+
+                const appRowsCapped = insightAppRows.slice(0, 40);
+                const appChunks = [];
+                for (let i = 0; i < appRowsCapped.length; i += 20) appChunks.push(appRowsCapped.slice(i, i + 20));
+                if (appChunks.length === 0) appChunks.push([]);
+                const appOverflow = insightAppRows.length > 40
+                    ? '<div style="font-size:8px;color:#64748b;margin:-10px 0 12px">Showing first 40 of ' + insightAppRows.length + ' applications.</div>'
+                    : '';
 
                 const declineDetailRows = Object.entries(stats.declineReasons || {}).sort((a, b) => b[1] - a[1])
-                    .map(([reason, count]) => '<tr><td style="padding:4px 6px;border:1px solid #ccc;font-size:9px">' + reason + '</td><td style="padding:4px 6px;border:1px solid #ccc;font-size:9px;text-align:center">' + count + '</td></tr>').join('')
-                    || '<tr><td style="padding:4px 6px;border:1px solid #ccc;font-size:9px" colspan="2">No decline reason recorded</td></tr>';
+                    .map(([reason, count], i) => `<tr style="background:${zebra(i)}"><td style="${cell}">${reason}</td><td style="${cellCenter}font-weight:700">${count}</td></tr>`).join('')
+                    || `<tr><td style="${cellCenter}color:#64748b" colspan="2">No decline reason recorded</td></tr>`;
 
-                const el = document.createElement('div');
-                el.innerHTML = '<div style="font-family:sans-serif;color:#0f172a;padding:20px;font-size:11px;line-height:1.4;width:760px;text-transform:uppercase">' +
-                    '<div style="display:flex;justify-content:space-between;padding-bottom:10px;border-bottom:2px solid #000;margin-bottom:14px">' +
-                    '<div><div style="font-size:18px;font-weight:800">FM DATA</div><div style="font-size:10px;font-weight:700;color:#2563eb;text-transform:uppercase;margin-top:2px">Board-Ready Executive Summary</div></div>' +
-                    '<div style="text-align:right;font-size:10px;color:#555">Date: <b>'+dateStr+'</b><br>Classification: <b>Board Confidential</b></div></div>' +
+                const th = 'padding:6px 8px;border:1px solid #cbd5e1;font-size:8px;font-weight:700;color:#334155;background:#f1f5f9;letter-spacing:.03em;';
+                const thCenter = th + 'text-align:center;';
+                const thRight = th + 'text-align:right;';
+                const sectionTitle = (t) => '<div style="font-size:10px;font-weight:800;letter-spacing:.05em;margin:0 0 6px;color:#0f172a">' + t + '</div>';
+                const tableWrap = (html) => '<table style="width:100%;border-collapse:collapse;margin-bottom:16px">' + html + '</table>';
 
-                    '<div style="font-size:11px;font-weight:800;text-transform:uppercase;margin-bottom:8px">Key Executive Metrics</div>' +
-                    '<table style="width:100%;border-collapse:collapse;margin-bottom:14px"><tr>' +
-                    '<td style="border:1px solid #ccc;padding:8px;width:25%"><div style="font-size:9px;font-weight:700;color:#666;text-transform:uppercase">Total Applications</div><div style="font-size:16px;font-weight:800;margin-top:2px">'+stats.total+'</div></td>' +
-                    '<td style="border:1px solid #ccc;padding:8px;width:25%"><div style="font-size:9px;font-weight:700;color:#666;text-transform:uppercase">Avg SLA</div><div style="font-size:16px;font-weight:800;margin-top:2px">'+stats.avgSlaDays+'d</div></td>' +
-                    '<td style="border:1px solid #ccc;padding:8px;width:25%"><div style="font-size:9px;font-weight:700;color:#666;text-transform:uppercase">Total Approved</div><div style="font-size:16px;font-weight:800;margin-top:2px;color:green">'+UI.formatCurrency(stats.totalApproved)+'</div></td>' +
-                    '<td style="border:1px solid #ccc;padding:8px;width:25%"><div style="font-size:9px;font-weight:700;color:#666;text-transform:uppercase">Total Requested</div><div style="font-size:16px;font-weight:800;margin-top:2px">'+UI.formatCurrency(stats.totalRequested)+'</div></td></tr></table>' +
+                const metricCards = '<table style="width:100%;border-collapse:collapse;margin-bottom:18px"><tr>' + [
+                    ['Total Applications', stats.total, '#0f172a'],
+                    ['Average SLA', stats.avgSlaDays + ' days', '#0f172a'],
+                    ['Total Approved', UI.formatCurrency(stats.totalApproved), '#15803d'],
+                    ['Total Requested', UI.formatCurrency(stats.totalRequested), '#0f172a']
+                ].map(([label, value, color]) =>
+                    '<td style="width:25%;padding:12px 14px;border:1px solid #e2e8f0;background:#f8fafc">' +
+                    '<div style="font-size:8px;font-weight:700;color:#64748b;letter-spacing:.06em">' + label + '</div>' +
+                    '<div style="font-size:18px;font-weight:800;margin-top:4px;color:' + color + '">' + value + '</div>' +
+                    '</td>'
+                ).join('') + '</tr></table>';
 
-                    '<div style="font-size:11px;font-weight:800;text-transform:uppercase;margin-bottom:8px;margin-top:14px">Key Factors & Highlighted Issues</div>' +
-                    '<table style="width:100%;border-collapse:collapse;margin-bottom:14px"><thead><tr style="background:#f1f5f9">' +
-                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-align:center;width:24px">#</th>' +
-                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-align:left;width:150px">Factor / Issue</th>' +
-                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-align:center;width:90px">Observation</th>' +
-                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-align:left">Reason</th></tr></thead><tbody>' +
-                    insightRows + '</tbody></table>' +
+                const buildPage = (spec, pageNo, totalPages) => `
+                    <div style="width:760px;box-sizing:border-box;min-height:1075px;padding:30px 34px;display:flex;flex-direction:column;background:#fff;font-family:Arial,Helvetica,sans-serif;color:#0f172a;font-size:10px;line-height:1.45;text-transform:uppercase">
+                        <div style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:12px;border-bottom:2px solid #0f172a;margin-bottom:18px">
+                            <div>
+                                <div style="font-size:20px;font-weight:800;letter-spacing:-.02em">FM DATA</div>
+                                <div style="font-size:9px;font-weight:700;color:#2563eb;letter-spacing:.08em;margin-top:3px">Board-Ready Executive Summary</div>
+                            </div>
+                            <div style="text-align:right;font-size:9px;color:#475569;line-height:1.6">
+                                <div><span style="color:#94a3b8">Date</span> <b>${dateStr}</b></div>
+                                <div><span style="color:#94a3b8">Classification</span> <b>Board Confidential</b></div>
+                            </div>
+                        </div>
+                        <div style="flex:1 1 auto">
+                            <div style="font-size:14px;font-weight:800;letter-spacing:.02em">${spec.title}</div>
+                            ${spec.subtitle ? `<div style="font-size:9px;color:#64748b;margin:3px 0 14px">${spec.subtitle}</div>` : '<div style="height:14px"></div>'}
+                            ${spec.body}
+                        </div>
+                        <div style="padding-top:9px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;font-size:8px;color:#94a3b8;letter-spacing:.05em">
+                            <span>FM Data — Board Report</span>
+                            <span>Page ${pageNo} of ${totalPages}</span>
+                        </div>
+                    </div>`;
 
-                    '<div style="font-size:11px;font-weight:800;text-transform:uppercase;margin-bottom:8px;margin-top:14px">Top Partner Bank SLA & Performance Ranking</div>' +
-                    '<table style="width:100%;border-collapse:collapse;margin-bottom:14px"><thead><tr style="background:#f1f5f9">' +
-                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:left">Bank</th>' +
-                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:center">Apps</th>' +
-                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:center">Done</th>' +
-                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:center">Declined</th>' +
-                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:center">SLA</th>' +
-                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:center">Success</th>' +
-                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:right">Requested</th>' +
-                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:right">Approved</th>' +
-                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:right">Approval %</th></tr></thead><tbody>' +
-                    bankRows + '</tbody></table>' +
+                const specs = [];
+                specs.push({
+                    title: 'Executive Summary',
+                    subtitle: 'Portfolio overview, key factors and highlighted issues',
+                    body: metricCards + sectionTitle('Key Factors & Highlighted Issues') +
+                        tableWrap('<thead><tr>' +
+                            '<th style="' + thCenter + 'width:34px">#</th>' +
+                            '<th style="' + th + 'width:150px">Factor / Issue</th>' +
+                            '<th style="' + thCenter + 'width:96px">Observation</th>' +
+                            '<th style="' + th + '">Reason</th>' +
+                            '</tr></thead><tbody>' + insightRows + '</tbody>')
+                });
 
-                    '<div style="font-size:11px;font-weight:800;text-transform:uppercase;margin-bottom:8px;margin-top:14px">Collateral Distribution</div>' +
-                    '<table style="width:100%;border-collapse:collapse;margin-bottom:14px"><thead><tr style="background:#f1f5f9">' +
-                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:left">Collateral Type</th>' +
-                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:center">Applications</th></tr></thead><tbody>' +
-                    collRows + '</tbody></table>' +
+                appChunks.forEach((chunk, idx) => {
+                    specs.push({
+                        title: 'Applications Involved by Factor / Issue',
+                        subtitle: idx === 0
+                            ? 'Applications contributing to each highlighted factor, issue or reason'
+                            : 'Continued',
+                        body: tableWrap('<thead><tr>' +
+                            '<th style="' + thCenter + 'width:54px">Factor</th>' +
+                            '<th style="' + th + '">Company</th>' +
+                            '<th style="' + th + '">Facility</th>' +
+                            '<th style="' + thCenter + 'width:84px">Status</th>' +
+                            '<th style="' + th + '">Reason / Note</th>' +
+                            '<th style="' + thRight + 'width:74px">Requested</th>' +
+                            '</tr></thead><tbody>' + appRowsHtml(chunk) + '</tbody>') +
+                            (idx === appChunks.length - 1 ? appOverflow : '')
+                    });
+                });
 
-                    '<div style="margin-top:20px;padding-top:8px;border-top:1px solid #ccc;font-size:9px;color:#999">FM Data — Page 1 of 2</div>' +
-                    '<div style="page-break-before:always;height:20px"></div>' +
+                specs.push({
+                    title: 'Partner Bank Performance & Collateral',
+                    subtitle: 'Top partner bank SLA performance and collateral distribution',
+                    body: sectionTitle('Top Partner Bank SLA & Performance Ranking') +
+                        tableWrap('<thead><tr>' +
+                            '<th style="' + th + '">Bank</th>' +
+                            '<th style="' + thCenter + '">Apps</th>' +
+                            '<th style="' + thCenter + '">Done</th>' +
+                            '<th style="' + thCenter + '">Declined</th>' +
+                            '<th style="' + thCenter + '">SLA</th>' +
+                            '<th style="' + thCenter + '">Success</th>' +
+                            '<th style="' + thRight + '">Requested</th>' +
+                            '<th style="' + thRight + '">Approved</th>' +
+                            '<th style="' + thRight + '">Approval %</th>' +
+                            '</tr></thead><tbody>' + bankRows + '</tbody>') +
+                        sectionTitle('Collateral Distribution') +
+                        tableWrap('<thead><tr>' +
+                            '<th style="' + th + '">Collateral Type</th>' +
+                            '<th style="' + thCenter + 'width:100px">Applications</th>' +
+                            '</tr></thead><tbody>' + collRows + '</tbody>')
+                });
 
-                    '<div style="display:flex;justify-content:space-between;padding-bottom:10px;border-bottom:2px solid #000;margin-bottom:14px">' +
-                    '<div><div style="font-size:18px;font-weight:800">FM DATA</div><div style="font-size:10px;font-weight:700;color:#2563eb;text-transform:uppercase;margin-top:2px">Monthly Trajectory & Bottleneck Analysis</div></div>' +
-                    '<div style="text-align:right;font-size:10px;color:#555">Date: <b>'+dateStr+'</b></div></div>' +
+                specs.push({
+                    title: 'Monthly Trajectory & Decline Analysis',
+                    subtitle: 'Monthly performance trend and decline reasons breakdown',
+                    body: sectionTitle('Monthly Performance Trajectory') +
+                        tableWrap('<thead><tr>' +
+                            '<th style="' + th + '">Month</th>' +
+                            '<th style="' + thCenter + '">Apps</th>' +
+                            '<th style="' + thCenter + '">Done</th>' +
+                            '<th style="' + thCenter + '">Declined</th>' +
+                            '<th style="' + thRight + '">Requested (RM)</th>' +
+                            '<th style="' + thRight + '">Approved (RM)</th>' +
+                            '<th style="' + thRight + '">Approval %</th>' +
+                            '</tr></thead><tbody>' + monthlyRows + '</tbody>') +
+                        sectionTitle('Decline Reasons Breakdown') +
+                        tableWrap('<thead><tr>' +
+                            '<th style="' + th + '">Reason</th>' +
+                            '<th style="' + thCenter + 'width:80px">Count</th>' +
+                            '</tr></thead><tbody>' + declineDetailRows + '</tbody>')
+                });
 
-                    '<div style="font-size:11px;font-weight:800;text-transform:uppercase;margin-bottom:8px">Monthly Performance Trajectory</div>' +
-                    '<table style="width:100%;border-collapse:collapse;margin-bottom:14px"><thead><tr style="background:#f1f5f9">' +
-                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:left">Month</th>' +
-                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:center">Apps</th>' +
-                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:center">Done</th>' +
-                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:center">Declined</th>' +
-                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:right">Requested (RM)</th>' +
-                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:right">Approved (RM)</th>' +
-                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-transform:uppercase;text-align:right">Approval %</th></tr></thead><tbody>' +
-                    monthlyRows + '</tbody></table>' +
-
-                    '<div style="font-size:11px;font-weight:800;text-transform:uppercase;margin-bottom:8px;margin-top:14px">Decline Reasons Breakdown</div>' +
-                    '<table style="width:100%;border-collapse:collapse;margin-bottom:14px"><thead><tr style="background:#f1f5f9">' +
-                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-align:left">Reason</th>' +
-                    '<th style="padding:5px 6px;border:1px solid #ccc;font-size:9px;text-align:center;width:80px">Count</th></tr></thead><tbody>' +
-                    declineDetailRows + '</tbody></table>' +
-                    '<div style="margin-top:20px;padding-top:8px;border-top:1px solid #ccc;font-size:9px;color:#999">FM Data — Page 2 of 2</div>' +
-                '</div>';
-
-                el.style.cssText = 'position:fixed;left:0;top:0;width:800px;background:#fff;z-index:9999';
-                document.body.appendChild(el);
-
-                await new Promise(r => setTimeout(r, 300));
-
-                const canvas = await html2canvas(el, { scale: 2, useCORS: true, logging: false });
-                document.body.removeChild(el);
-
-                const imgData = canvas.toDataURL('image/jpeg', 0.95);
                 const { jsPDF } = window.jspdf;
                 const pdf = new jsPDF('p', 'mm', 'a4');
                 const pdfW = pdf.internal.pageSize.getWidth();
-                const pdfH = (canvas.height * pdfW) / canvas.width;
-                let heightLeft = pdfH;
-                let position = 0;
-                pdf.addImage(imgData, 'JPEG', 0, position, pdfW, pdfH);
-                heightLeft -= pdf.internal.pageSize.getHeight();
-                while (heightLeft > 0) {
-                    position = heightLeft - pdfH;
-                    pdf.addPage();
-                    pdf.addImage(imgData, 'JPEG', 0, position, pdfW, pdfH);
-                    heightLeft -= pdf.internal.pageSize.getHeight();
+                const pdfH = pdf.internal.pageSize.getHeight();
+                const margin = 8;
+                const contentW = pdfW - margin * 2;
+                const contentH = pdfH - margin * 2;
+
+                for (let i = 0; i < specs.length; i++) {
+                    const wrapper = document.createElement('div');
+                    wrapper.style.cssText = 'position:fixed;left:0;top:0;background:#fff;z-index:9999';
+                    wrapper.innerHTML = buildPage(specs[i], i + 1, specs.length);
+                    document.body.appendChild(wrapper);
+                    await new Promise(r => setTimeout(r, 120));
+                    const canvas = await html2canvas(wrapper.firstElementChild, { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff' });
+                    document.body.removeChild(wrapper);
+                    if (i > 0) pdf.addPage();
+                    const scale = Math.min(contentW / canvas.width, contentH / canvas.height);
+                    const drawW = canvas.width * scale;
+                    const drawH = canvas.height * scale;
+                    const y = margin + (contentH - drawH) / 2;
+                    pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', (pdfW - drawW) / 2, y, drawW, drawH);
                 }
+
                 pdf.save('FMData_Report_' + dateFile + '.pdf');
                 UI.showToast('PDF report downloaded', 'success');
             } catch (err) {
@@ -2143,13 +2439,6 @@ const App = {
 
             ${isSuperAdmin ? `
             <div class="card" style="margin-bottom:16px">
-                <div class="card-header"><div class="card-header-title">User Account Management</div></div>
-                <div class="card-body" id="admin-user-list">
-                    <div class="skeleton" style="height:44px;border-radius:8px;margin-bottom:8px"></div>
-                    <div class="skeleton" style="height:44px;border-radius:8px"></div>
-                </div>
-            </div>
-            <div class="card" style="margin-bottom:16px">
                 <div class="card-header"><div class="card-header-title">Page Access Permissions</div>
                     <span style="font-size:11px;color:var(--text-muted)">Staff Role Visibility</span>
                 </div>
@@ -2198,7 +2487,6 @@ const App = {
         } catch (err) { UI.showToast('Could not load stats: ' + err.message, 'error'); }
 
         if (isSuperAdmin) {
-            this.loadAdminUsers();
             this.loadAdminPagePermissions();
             this.loadAdminChartVisibility();
         }
@@ -2219,6 +2507,85 @@ const App = {
                 UI.showToast('Data exported successfully','success');
             } catch(err) { UI.showToast('Export error: ' + err.message, 'error'); }
         });
+    },
+
+    async renderUsers(el) {
+        if (!Auth.isSuperAdmin()) {
+            this.renderUnfinishedPage(el, 'users');
+            return;
+        }
+
+        el.innerHTML = `
+            <div class="module-header-bar">
+                <div class="module-title-wrap">
+                    <h2>User Management</h2>
+                    <p>Manage user accounts and assign access roles</p>
+                </div>
+            </div>
+
+            <div class="card" style="margin-bottom:16px">
+                <div class="card-header">
+                    <div class="card-header-title">Add User</div>
+                    <span style="font-size:11px;color:var(--text-muted)">Create a new account</span>
+                </div>
+                <div class="card-body">
+                    <form id="add-user-form" autocomplete="off">
+                        <div class="grid-2">
+                            <div class="form-group">
+                                <label for="new-user-email">Email</label>
+                                <input type="email" id="new-user-email" placeholder="name@company.com" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="new-user-password">Temporary password</label>
+                                <input type="password" id="new-user-password" placeholder="At least 6 characters" minlength="6" required>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="new-user-role">Role</label>
+                            <select id="new-user-role">
+                                <option value="staff">Staff</option>
+                                <option value="super_admin">Super Admin</option>
+                            </select>
+                        </div>
+                        <button class="btn-primary" type="submit" id="btn-add-user">${this.icons.plus} Add User</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card" style="margin-bottom:16px">
+                <div class="card-header">
+                    <div class="card-header-title">User Accounts</div>
+                    <span style="font-size:11px;color:var(--text-muted)">Super Admin only</span>
+                </div>
+                <div class="card-body" id="admin-user-list">
+                    <div class="skeleton" style="height:44px;border-radius:8px;margin-bottom:8px"></div>
+                    <div class="skeleton" style="height:44px;border-radius:8px"></div>
+                </div>
+            </div>`;
+
+        document.getElementById('add-user-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('new-user-email').value.trim();
+            const password = document.getElementById('new-user-password').value;
+            const role = document.getElementById('new-user-role').value;
+            const btn = document.getElementById('btn-add-user');
+            btn.disabled = true;
+            btn.textContent = 'Adding...';
+            try {
+                const result = await DB.createUser(email, password, role);
+                UI.showToast(result.needsConfirmation
+                    ? `User ${email} created. Confirmation email sent.`
+                    : `User ${email} created as ${role === 'super_admin' ? 'Super Admin' : 'Staff'}`, 'success');
+                e.target.reset();
+                await this.loadAdminUsers();
+            } catch (err) {
+                UI.showToast('Error adding user: ' + err.message, 'error');
+            }
+            btn.disabled = false;
+            btn.innerHTML = `${this.icons.plus} Add User`;
+        });
+
+        await this.loadAdminUsers();
     },
 
     async loadAdminUsers() {
@@ -2333,132 +2700,98 @@ const App = {
     },
 
     async renderBosReview(el) {
-        let bosEditingId = null;
-
-        const openBosModal = (row) => {
-            bosEditingId = row?.id || null;
-            document.getElementById('modal-bos-title').textContent = row ? 'Edit Proposal' : 'New Proposal';
-            document.getElementById('btn-save-bos').textContent = row ? 'Update Proposal' : 'Save Proposal';
-            if (row) UI.setFormData('bos-form', row);
-            else UI.resetForm('bos-form');
-            UI.openModal('modal-bos');
-        };
-
-        App.updateBosStatus = async (id, status) => {
-            try {
-                await DB.updateBosReview(id, { status });
-                UI.showToast(`Proposal ${status}`, 'success');
-                loadBos();
-            } catch (err) { UI.showToast('Error: ' + err.message, 'error'); }
-        };
-
-        App.editBosReview = async (id) => {
-            const reviews = await DB.fetchBosReviews();
-            const row = reviews.find(r => r.id === id);
-            if (row) openBosModal(row);
-        };
-
-        App.deleteBosReview = async (id) => {
-            const confirmed = await UI.confirmDialog('Delete this proposal?', 'Delete Proposal');
-            if (!confirmed) return;
-            try {
-                await DB.deleteBosReview(id);
-                UI.showToast('Proposal deleted', 'success');
-                loadBos();
-            } catch (err) { UI.showToast('Error: ' + err.message, 'error'); }
-        };
-
         App.approveChangeRequest = async (id) => {
-            if (!Auth.isSuperAdmin()) { UI.showToast('Only HOD can approve changes', 'error'); return; }
             try {
-                await DB.approveChangeRequest(id);
+                await DB.approveChangeRequest(id, document.getElementById(`review-note-${id}`)?.value.trim());
                 UI.showToast('Change approved and applied', 'success');
-                loadBos();
+                await loadBos();
             } catch (err) { UI.showToast('Error approving: ' + err.message, 'error'); }
         };
 
         App.rejectChangeRequest = async (id) => {
-            if (!Auth.isSuperAdmin()) { UI.showToast('Only HOD can reject changes', 'error'); return; }
             try {
-                await DB.rejectChangeRequest(id);
+                await DB.rejectChangeRequest(id, document.getElementById(`review-note-${id}`)?.value.trim());
                 UI.showToast('Change rejected', 'success');
-                loadBos();
+                await loadBos();
             } catch (err) { UI.showToast('Error rejecting: ' + err.message, 'error'); }
         };
 
-        App.deleteChangeRequest = async (id) => {
-            if (!Auth.isSuperAdmin()) return;
-            const confirmed = await UI.confirmDialog('Delete this change request?', 'Delete Request');
-            if (!confirmed) return;
-            try {
-                await DB.deleteChangeRequest(id);
-                UI.showToast('Request deleted', 'success');
-                loadBos();
-            } catch (err) { UI.showToast('Error: ' + err.message, 'error'); }
-        };
-
         const loadBos = async () => {
-            const isSuperAdmin = Auth.isSuperAdmin();
-            const reviews = await DB.fetchBosReviews();
+            const canReview = await Auth.canReviewChanges();
             const changes = await DB.fetchChangeRequests();
-            const pendingChanges = changes.filter(c => (c.status || 'PENDING') === 'PENDING');
-            const pendingCount = reviews.filter(r => (r.status || 'PENDING REVIEW') === 'PENDING REVIEW').length;
+            const pendingChanges = changes.filter(cr =>
+                cr.entity === 'application' && ['CREATE', 'UPDATE'].includes(cr.action) &&
+                cr.status === 'PENDING' && (cr.action === 'CREATE' || cr.record_id) &&
+                Object.entries(cr.payload || {}).some(([key, value]) =>
+                    !['id', 'created_at', 'updated_at', 'type_facility_custom'].includes(key) &&
+                    (cr.action === 'CREATE' || !cr.before_payload || JSON.stringify(value) !== JSON.stringify(cr.before_payload[key])))
+            );
 
             const esc = (s) => String(s ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
             const fieldLabels = {
                 company: 'Company', bank: 'Bank', type_facility: 'Type of Facility', name_facility: 'Name of Facility',
                 category: 'Category', year_application: 'Year', bfr: 'BFR', profit_rate: 'Profit Rate', rate_tenure: 'Tenure',
                 status: 'Status', collateral: 'Collateral', total_requested: 'Total Requested', total_approved: 'Total Approved',
-                app_details: 'Details', hold_reason: 'Hold Reason', decline_reason: 'Decline Reason', cancel_reason: 'Cancellation Reason', discharge_note: 'Discharged Note', officers: 'Officers', annual_review: 'Annual Review',
+                app_details: 'Details', hold_reason: 'Hold Reason', decline_reason: 'Decline Reason', cancel_reason: 'Cancellation Reason', discharge_note: 'Discharged Note', discharge_note_text: 'Discharge Note Details', officers: 'Officers', annual_review: 'Annual Review',
+                bank_cancellation_letter: 'Bank Cancellation Letter', bank_cancellation_letter_path: 'Bank Letter File', bank_cancellation_letter_name: 'Bank Letter Name',
                 name: 'Name', description: 'Description', bfr_current: 'BFR Current', bfr_previous: 'BFR Previous',
-                property_detail: 'Property Detail', date_doc_sent: 'Doc Sent', date_updated: 'Date Updated'
+                property_detail: 'Property Detail', date_doc_sent: 'Doc Sent', date_updated: 'Date Updated', notes: 'Notes', collateral_id: 'Collateral ID'
             };
             const actionClass = { CREATE: 'done', UPDATE: 'progress', DELETE: 'declined' };
             const currencyKeys = ['total_requested', 'total_approved', 'total_offered'];
             const renderChangeFields = (cr) => {
                 if (cr.action === 'DELETE') return `<div class="bos-notes-box">This record will be permanently deleted.</div>`;
-                const fmtVal = (k, v) => Array.isArray(v) ? v.map(x => (x && typeof x === 'object') ? (x.name || '') : String(x)).filter(Boolean).join(', ') : (currencyKeys.includes(k) ? UI.formatCurrency(v) : v);
+                const fmtVal = (k, v) => {
+                    if (v === null || v === undefined || v === '') return '(empty)';
+                    if (typeof v === 'boolean') return v ? 'Yes' : 'No';
+                    if (Array.isArray(v)) return v.map(item => fmtVal(k, item)).join('; ') || '(empty)';
+                    if (typeof v === 'object') return Object.entries(v).map(([key, value]) => `${key}: ${fmtVal(key, value)}`).join(', ');
+                    return currencyKeys.includes(k) ? UI.formatCurrency(v) : v;
+                };
                 const entries = Object.entries(cr.payload || {})
-                    .filter(([k, v]) => v !== null && v !== '' && !['id', 'created_at', 'updated_at', 'progress', 'collateral_id', 'type_facility_custom'].includes(k))
-                    .slice(0, 10);
+                    .filter(([k]) => !['id', 'created_at', 'updated_at', 'type_facility_custom'].includes(k));
                 if (!entries.length) return '';
-                return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;font-size:12px;padding:8px 0">
-                    ${entries.map(([k, v]) => `<div><span style="color:var(--text-3);display:block;font-size:10px;text-transform:uppercase;letter-spacing:.03em">${esc(fieldLabels[k] || k.replace(/_/g, ' '))}</span><span>${esc(fmtVal(k, v))}</span></div>`).join('')}
-                </div>`;
+                const sections = [
+                    ['Application', ['company', 'category', 'status', 'app_details', 'progress']],
+                    ['Bank & Facility', ['bank', 'bfr', 'type_facility', 'name_facility']],
+                    ['Financial Details', ['total_requested', 'total_approved', 'total_offered', 'collateral', 'collateral_id', 'fixed_deposit', 'profit_rate', 'rate_tenure']],
+                    ['Dates & Reviews', ['year_application', 'annual_review', 'date_doc_sent', 'date_followup', 'date_updated']],
+                    ['Additional Details', []]
+                ];
+                const assigned = new Set(sections.flatMap(([, keys]) => keys));
+                return `<div class="review-change-fields">${sections.map(([title, keys]) => {
+                    const fields = entries.filter(([key]) => keys.length ? keys.includes(key) : !assigned.has(key));
+                    if (!fields.length) return '';
+                    return `<div><div class="detail-section">${title}</div><div class="detail-grid">${fields.map(([k, v]) => `
+                        <div class="review-change-field detail-group"><div class="detail-label">${esc(fieldLabels[k] || k.replace(/_/g, ' '))}</div>
+                        ${cr.action === 'UPDATE' ? `<div class="detail-value"><span>Original:</span> ${cr.before_payload ? esc(fmtVal(k, cr.before_payload[k])) : 'Not recorded; reject and resubmit this edit'}</div>` : ''}
+                        <div class="detail-value">${cr.action === 'UPDATE' ? '<span>Proposed:</span> ' : ''}${esc(fmtVal(k, v))}</div></div>`).join('')}</div></div>`;
+                }).join('')}</div>`;
             };
 
             el.innerHTML = `
             <div class="module-header-bar">
                 <div class="module-title-wrap">
                     <h2>HOD Review</h2>
-                    <p>Pending changes and bank facility proposals awaiting Head of Department evaluation</p>
+                    <p>New applications and edits awaiting approval. New applications appear in Applications after approval; existing data stays unchanged until approved.</p>
                 </div>
                 <div class="summary-pills-bar">
                     <div class="pill-stat">
                         <span class="pill-stat-label">Pending Changes</span>
                         <span class="pill-stat-val" style="color:var(--amber)">${pendingChanges.length}</span>
                     </div>
-                    <div class="pill-stat">
-                        <span class="pill-stat-label">Total Proposals</span>
-                        <span class="pill-stat-val">${reviews.length}</span>
-                    </div>
-                    <div class="pill-stat">
-                        <span class="pill-stat-label">Pending Review</span>
-                        <span class="pill-stat-val" style="color:var(--amber)">${pendingCount}</span>
-                    </div>
                     <button class="btn-secondary" id="btn-review-history">${this.icons.activity} Review History</button>
-                    <button class="btn-primary" id="btn-add-bos">${this.icons.plus} Add Proposal</button>
                 </div>
             </div>
 
             <div class="card" style="margin-bottom:24px">
                 <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
-                    <div class="card-header-title">Pending Change Requests</div>
+                    <div class="card-header-title">Pending Applications and Edits</div>
                     ${pendingChanges.length ? `<span class="badge hold"><span class="badge-dot"></span>${pendingChanges.length} awaiting approval</span>` : ''}
                 </div>
                 <div class="card-body">
                     ${pendingChanges.length === 0 ? `
-                        <p style="color:var(--text-3);font-size:13px;margin:0">No pending changes. Staff submissions will appear here for approval.</p>
+                        <p style="color:var(--text-3);font-size:13px;margin:0">No pending changes. New applications and edits will appear here after submission.</p>
                     ` : `
                         <div class="bos-card-grid">
                             ${pendingChanges.map(cr => `
@@ -2470,14 +2803,27 @@ const App = {
                                         </div>
                                         <span class="badge ${actionClass[cr.action] || 'pending'}"><span class="badge-dot"></span>${cr.action} ${esc(cr.entity)}</span>
                                     </div>
-                                    ${renderChangeFields(cr)}
+                                    <div class="review-card-summary">${esc([
+                                        cr.payload?.company ?? cr.before_payload?.company,
+                                        cr.payload?.name_facility ?? cr.before_payload?.name_facility,
+                                        cr.payload?.bank ?? cr.before_payload?.bank
+                                    ].filter(Boolean).join(' · '))}</div>
                                     <div class="bos-card-actions">
-                                        ${isSuperAdmin ? `
+                                        <button type="button" class="btn-secondary btn-sm" data-review-view aria-haspopup="dialog" aria-controls="review-details-${esc(cr.id)}">View</button>
+                                        ${canReview && cr.requested_by !== Auth.getUser()?.id ? `
                                             <button class="btn-primary btn-sm" onclick="App.approveChangeRequest('${cr.id}')">Approve</button>
                                             <button class="btn-danger btn-sm" onclick="App.rejectChangeRequest('${cr.id}')">Reject</button>
-                                            <button class="btn-secondary btn-sm" onclick="App.deleteChangeRequest('${cr.id}')">${this.icons.trash}</button>
                                         ` : `<span style="font-size:12px;color:var(--text-3)">Awaiting HOD approval</span>`}
                                     </div>
+                                    <dialog id="review-details-${esc(cr.id)}" class="modal review-detail-modal" aria-labelledby="review-title-${esc(cr.id)}">
+                                        <div class="modal-header"><h2 id="review-title-${esc(cr.id)}">${esc(cr.payload?.company ?? cr.before_payload?.company ?? 'Application')} · ${esc(cr.payload?.type_facility ?? cr.before_payload?.type_facility ?? 'Facility')}</h2><button type="button" class="modal-close" data-review-close aria-label="Close application details">&times;</button></div>
+                                        <div class="modal-body">
+                                        ${renderChangeFields(cr)}
+                                        ${cr.record_id ? `<div class="detail-section">Date History</div><div class="application-date-history" data-date-history data-application-id="${esc(cr.record_id)}"></div>` : ''}
+                                        ${canReview && cr.requested_by !== Auth.getUser()?.id ? `<div class="form-group"><label for="review-note-${esc(cr.id)}">Review note (optional)</label><textarea id="review-note-${esc(cr.id)}" rows="2" placeholder="Reason or context for this decision"></textarea></div>` : ''}
+                                        </div>
+                                        <div class="modal-footer"><button type="button" class="btn-secondary" data-review-close>Close</button></div>
+                                    </dialog>
                                 </div>
                             `).join('')}
                         </div>
@@ -2485,120 +2831,144 @@ const App = {
                 </div>
             </div>
 
-            ${reviews.length === 0 ? `
-                <div class="empty-state">
-                    <div class="empty-state-icon">
-                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                    </div>
-                    <h3>No proposals to review</h3>
-                    <p>All financing proposals have been reviewed and decided.</p>
-                </div>
-            ` : `
-                <div class="bos-card-grid">
-                    ${reviews.map(r => `
-                        <div class="bos-card">
-                            <div class="bos-card-header">
-                                <div>
-                                    <div class="bos-card-title">${r.bank_name || 'Bank'} — ${r.type_facility || 'Facility'}</div>
-                                    <div class="bos-card-company">${r.name_facility || 'Standard Facility'}</div>
-                                </div>
-                                <span class="badge ${(r.status || 'PENDING REVIEW') === 'APPROVED' ? 'done' : (r.status || 'PENDING REVIEW') === 'REJECTED' ? 'declined' : 'hold'}">
-                                    <span class="badge-dot"></span>${r.status || 'PENDING REVIEW'}
-                                </span>
-                            </div>
+            `;
 
-                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;padding:8px 0">
-                                <div><span style="color:var(--text-3);display:block;font-size:11px;text-transform:uppercase">Offered Amount</span><strong style="color:var(--green);font-family:var(--font-mono);font-size:13px">${UI.formatCurrency(r.total_offered)}</strong></div>
-                                <div><span style="color:var(--text-3);display:block;font-size:11px;text-transform:uppercase">Loan Limit</span><strong style="font-family:var(--font-mono);font-size:13px">${r.loan_limit || '-'}</strong></div>
-                                <div><span style="color:var(--text-3);display:block;font-size:11px;text-transform:uppercase">Profit Rate</span><span>${r.profit_rate || '-'}</span></div>
-                                <div><span style="color:var(--text-3);display:block;font-size:11px;text-transform:uppercase">Tenure</span><span>${r.tenure || '-'}</span></div>
-                            </div>
-
-                            ${r.notes ? `<div class="bos-notes-box">${r.notes}</div>` : ''}
-
-                            <div class="bos-card-actions">
-                                ${(r.status || 'PENDING REVIEW') === 'PENDING REVIEW' ? `
-                                    <button class="btn-primary btn-sm" onclick="App.updateBosStatus('${r.id}','APPROVED')">Approve</button>
-                                    <button class="btn-danger btn-sm" onclick="App.updateBosStatus('${r.id}','REJECTED')">Reject</button>
-                                ` : ''}
-                                <button class="btn-secondary btn-sm" onclick="App.editBosReview('${r.id}')">${this.icons.edit} Edit</button>
-                                <button class="btn-danger btn-sm" onclick="App.deleteBosReview('${r.id}')">${this.icons.trash}</button>
-                            </div>
-                        </div>
-                    `).join('')}
-                </div>
-            `}
-
-            <div class="modal-overlay" id="modal-bos">
-                <div class="modal">
-                    <div class="modal-header">
-                        <h2 id="modal-bos-title">New Proposal</h2>
-                        <button class="modal-close" onclick="UI.closeModal('modal-bos')">&times;</button>
-                    </div>
-                    <form id="bos-form" onsubmit="return false">
-                        <div class="modal-body">
-                            <div class="form-row">
-                                <div class="form-group"><label>Bank Name</label><input name="bank_name" required /></div>
-                                <div class="form-group"><label>Type of Facility</label><input name="type_facility" required /></div>
-                            </div>
-                            <div class="form-row">
-                                <div class="form-group"><label>Name of Facility</label><input name="name_facility" /></div>
-                                <div class="form-group"><label>Loan Limit</label><input name="loan_limit" /></div>
-                            </div>
-                            <div class="form-row">
-                                <div class="form-group"><label>Profit Rate</label><input name="profit_rate" /></div>
-                                <div class="form-group"><label>Tenure</label><input name="tenure" /></div>
-                            </div>
-                            <div class="form-row">
-                                <div class="form-group"><label>Collateral</label><input name="collateral" /></div>
-                                <div class="form-group"><label>Takaful</label><input name="takaful" /></div>
-                            </div>
-                            <div class="form-row">
-                                <div class="form-group"><label>Legal Fee</label><input name="legal_fee" /></div>
-                                <div class="form-group"><label>Total Offered (RM)</label><input type="number" name="total_offered" step="0.01" /></div>
-                            </div>
-                            <div class="form-group"><label>Status</label>
-                                <select name="status">
-                                    <option>PENDING REVIEW</option>
-                                    <option>APPROVED</option>
-                                    <option>REJECTED</option>
-                                </select>
-                            </div>
-                            <div class="form-group"><label>Notes</label><textarea name="notes" rows="3"></textarea></div>
-                        </div>
-                        <div class="modal-footer">
-                            <button type="button" class="btn-secondary" onclick="UI.closeModal('modal-bos')">Cancel</button>
-                            <button type="submit" class="btn-primary" id="btn-save-bos">Save Proposal</button>
-                        </div>
-                    </form>
-                </div>
-            </div>`;
-
-            document.getElementById('btn-add-bos')?.addEventListener('click', () => openBosModal());
             document.getElementById('btn-review-history')?.addEventListener('click', () => { window.location.hash = 'review_history'; });
-            document.getElementById('bos-form')?.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const data = UI.getFormData('bos-form');
-                const btn = document.getElementById('btn-save-bos');
-                btn.disabled = true;
-                btn.textContent = 'Saving...';
-                try {
-                    if (bosEditingId) {
-                        await DB.updateBosReview(bosEditingId, data);
-                        UI.showToast('Proposal updated', 'success');
-                    } else {
-                        await DB.insertBosReview(data);
-                        UI.showToast('Proposal added', 'success');
-                    }
-                    UI.closeModal('modal-bos');
-                    loadBos();
-                } catch (err) { UI.showToast('Error: ' + err.message, 'error'); }
-                btn.disabled = false;
-                btn.textContent = bosEditingId ? 'Update Proposal' : 'Save Proposal';
+            el.querySelectorAll('[data-review-view]').forEach(button => {
+                button.addEventListener('click', () => {
+                    const details = document.getElementById(button.getAttribute('aria-controls'));
+                    details.showModal();
+                    const history = details.querySelector('[data-date-history]');
+                    if (history) UI.renderApplicationDateHistory(history, history.dataset.applicationId);
+                });
+            });
+            el.querySelectorAll('.review-detail-modal').forEach(dialog => {
+                dialog.querySelectorAll('[data-review-close]').forEach(button => {
+                    button.onclick = () => dialog.close();
+                });
+                dialog.addEventListener('click', event => {
+                    const bounds = dialog.getBoundingClientRect();
+                    if (event.target === dialog && (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom)) dialog.close();
+                });
             });
         };
 
-        loadBos();
+        await loadBos();
+    },
+
+    async renderAuditTrail(el, isCurrent = () => true) {
+        let page = 0;
+        let filters = {};
+        let version = 0;
+        const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+        const label = value => String(value).replace(/_/g, ' ').toLowerCase().replace(/^./, char => char.toUpperCase());
+        const value = (item, present = true) => {
+            if (!present) return '(not present)';
+            if (item === null || item === undefined) return '(empty)';
+            if (item === '') return '(blank text)';
+            if (typeof item === 'boolean') return item ? 'Yes' : 'No';
+            if (Array.isArray(item)) return item.map(entry => value(entry)).join('\n\n') || '(empty)';
+            if (typeof item === 'object') return Object.entries(item).map(([key, entry]) => `${label(key)}: ${value(entry)}`).join('\n');
+            return String(item);
+        };
+        const options = values => values.map(item => `<option value="${item}">${label(item)}</option>`).join('');
+        el.innerHTML = `
+            <div class="module-header-bar"><div class="module-title-wrap"><h2>Audit Trail</h2>
+                <p>A record of changes, decisions and the people behind them.</p></div><span class="audit-timezone">Singapore time · UTC+08:00</span></div>
+            <form id="audit-filters" class="audit-filters">
+                <div class="audit-primary-filters">
+                <label>User email<input name="actor_email" type="search" placeholder="Search by email..."></label>
+                <label>Entity<select name="entity"><option value="">All entities</option>${options(['application', 'company', 'bank', 'collateral', 'user_profile', 'page_permission', 'chart_setting', 'legacy_proposal'])}</select></label>
+                <label>Action<select name="action"><option value="">All actions</option>${options(['SUBMITTED', 'APPROVED', 'REJECTED', 'RESTORED', 'CREATED', 'UPDATED', 'DELETED', 'REQUEST_UPDATED', 'REQUEST_DELETED'])}</select></label>
+                <div class="audit-filter-actions"><button class="btn-primary" type="submit">Search audit</button><button class="btn-secondary" type="reset">Clear filters</button></div>
+                </div>
+                <details class="audit-advanced"><summary>Date &amp; reference filters</summary><div class="audit-advanced-fields">
+                <label>From date<input name="from" type="date"></label><label>To date<input name="to" type="date"></label>
+                <label>Record / application ID<input name="record_id" placeholder="Full record UUID"></label>
+                <label>Request ID<input name="request_id" placeholder="Full request UUID"></label>
+                <label>Transaction ID<input name="transaction_id" placeholder="Transaction ID"></label>
+                </div></details>
+            </form>
+            <section class="audit-ledger" aria-label="Audit activity">
+                <div class="audit-ledger-title"><div><h3>Activity history</h3><p id="audit-message" role="status" aria-live="polite"></p></div><span>Latest first</span></div>
+                <div class="audit-columns" aria-hidden="true"><span>Action</span><span>Record</span><span>Handled by</span><span>Date &amp; time</span><span></span></div>
+                <div id="audit-events"></div>
+                <div class="audit-pagination"><span id="audit-page"></span><div><button id="audit-prev" class="btn-secondary" type="button">Previous</button><button id="audit-next" class="btn-secondary" type="button">Next</button></div></div>
+            </section>`;
+        const form = el.querySelector('#audit-filters');
+        const message = el.querySelector('#audit-message');
+        const events = el.querySelector('#audit-events');
+        const previous = el.querySelector('#audit-prev');
+        const next = el.querySelector('#audit-next');
+        const renderDiff = differences => `<div class="audit-diff-head" aria-hidden="true"><span>Field</span><span>Before</span><span>After</span></div><dl class="audit-diff">${Object.entries(differences || {}).map(([key, diff]) => `
+            <div><dt>${esc(label(key))}</dt><dd class="audit-before"><b>Before</b><pre>${esc(value(diff.before, diff.before_present))}</pre></dd><dd class="audit-after"><b>After</b><pre>${esc(value(diff.after, diff.after_present))}</pre></dd></div>`).join('')}</dl>`;
+        const load = async () => {
+            const ticket = ++version;
+            previous.disabled = next.disabled = true;
+            events.setAttribute('aria-busy', 'true');
+            message.textContent = 'Loading audit events...';
+            try {
+                const result = await DB.fetchAuditEvents(filters, page);
+                if (!isCurrent() || ticket !== version) return;
+                message.textContent = `${result.count.toLocaleString()} matching events`;
+                events.innerHTML = result.events.length ? result.events.map(event => {
+                    const snapshot = event.after_snapshot || event.before_snapshot || {};
+                    const proposed = event.source_table === 'change_requests' ? Object.fromEntries(Object.entries(snapshot.payload || {}).map(([key, item]) => [key, {
+                        before: snapshot.before_payload?.[key], after: item,
+                        before_present: !!snapshot.before_payload && Object.hasOwn(snapshot.before_payload, key), after_present: true
+                    }])) : null;
+                    const timestamp = new Intl.DateTimeFormat('en-SG', { timeZone: 'Asia/Singapore', dateStyle: 'medium', timeStyle: 'long' }).format(new Date(event.occurred_at));
+                    const actionTone = ['APPROVED', 'CREATED'].includes(event.action) ? 'positive' : ['REJECTED', 'DELETED', 'REQUEST_DELETED'].includes(event.action) ? 'negative' : event.action === 'SUBMITTED' ? 'pending' : 'neutral';
+                    const recordTitle = event.summary || snapshot.name_facility || snapshot.company || snapshot.name || snapshot.email || label(event.entity);
+                    return `<details class="audit-event">
+                        <summary class="audit-event-summary" aria-label="View changes and handling details">
+                            <span class="audit-action audit-action-${actionTone}">${esc(label(event.action))}</span>
+                            <span class="audit-record"><strong>${esc(recordTitle)}</strong><span>${esc(label(event.entity))}</span></span>
+                            <span class="audit-actor"><strong>${esc(event.actor_name || event.actor_email || (event.actor_id ? 'Unknown user' : 'Database / system'))}</strong><span>${esc(event.actor_name && event.actor_email ? event.actor_email : label(event.actor_role || 'unknown role'))}</span></span>
+                            <time datetime="${esc(event.occurred_at)}">${esc(timestamp)}</time><span class="audit-chevron" aria-hidden="true">›</span>
+                        </summary>
+                        <div class="audit-event-body">
+                            ${event.source_table === 'change_requests' ? `<div class="audit-handling"><div><span>Requested by</span><strong>${esc(snapshot.requested_by_email || snapshot.requested_by || 'Not recorded')}</strong></div><div><span>Reviewed by</span><strong>${esc(snapshot.reviewed_by_email || snapshot.reviewed_by || 'Not yet reviewed')}</strong></div><div class="audit-review-note"><span>Review note</span><p>${esc(snapshot.review_notes || 'None recorded')}</p></div></div>` : ''}
+                            ${proposed ? `<div class="audit-section-title"><h4>Proposed changes</h4><p>Requested values take effect only after approval.</p></div>${renderDiff(proposed)}` : `<div class="audit-section-title"><h4>Changes made</h4><p>Values saved by this action.</p></div>${renderDiff(event.field_changes)}`}
+                            ${proposed ? `<details class="audit-supporting"><summary>Workflow changes</summary>${renderDiff(event.field_changes)}</details>` : ''}
+                            <details class="audit-supporting"><summary>Event references</summary><dl class="audit-meta">
+                            <div><dt>Event ID</dt><dd>${esc(event.id)}</dd></div><div><dt>User ID</dt><dd>${esc(event.actor_id || 'No authenticated user')}</dd></div>
+                            <div><dt>Entity / source</dt><dd>${esc(event.entity)} / ${esc(event.source_table)}</dd></div>
+                            <div><dt>Record ID</dt><dd>${esc(event.record_id || 'Not yet assigned')}</dd></div><div><dt>Request ID</dt><dd>${esc(event.request_id || 'No request')}</dd></div>
+                            <div><dt>Transaction ID</dt><dd>${esc(event.transaction_id)}</dd></div>
+                            <div><dt>Server timestamp (UTC)</dt><dd>${esc(event.occurred_at)}</dd></div>
+                            </dl></details>
+                            <details class="audit-supporting"><summary>Full before / after snapshots</summary><div class="audit-snapshots"><div><h4>Before</h4><pre>${esc(JSON.stringify(event.before_snapshot, null, 2))}</pre></div><div><h4>After</h4><pre>${esc(JSON.stringify(event.after_snapshot, null, 2))}</pre></div></div></details>
+                        </div>
+                    </details>`;
+                }).join('') : '<div class="empty-state"><h3>No matching audit events</h3><p>Try different filters. Events appear after changes are saved with audit logging enabled.</p></div>';
+                el.querySelector('#audit-page').textContent = `Page ${page + 1} of ${Math.max(1, Math.ceil(result.count / 50))}`;
+                previous.disabled = page === 0;
+                next.disabled = (page + 1) * 50 >= result.count;
+            } catch (error) {
+                if (!isCurrent() || ticket !== version) return;
+                events.innerHTML = '';
+                el.querySelector('#audit-page').textContent = '';
+                message.textContent = `Unable to load audit events: ${error.message}. Use Search audit to retry.`;
+            } finally {
+                if (ticket === version) events.setAttribute('aria-busy', 'false');
+            }
+        };
+        form.addEventListener('submit', event => {
+            event.preventDefault();
+            const selected = Object.fromEntries(new FormData(form));
+            for (const key of Object.keys(selected)) selected[key] = selected[key].trim();
+            if (['record_id', 'request_id'].some(key => selected[key] && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(selected[key]))) {
+                form.querySelector('.audit-advanced').open = true;
+                message.textContent = 'Enter a complete UUID for the record or request ID.'; return;
+            }
+            if (selected.from && selected.to && selected.from > selected.to) { message.textContent = 'From date must be before or equal to To date.'; return; }
+            filters = selected; page = 0; load();
+        });
+        form.addEventListener('reset', () => { filters = {}; page = 0; load(); });
+        previous.addEventListener('click', () => { if (page > 0) { page--; load(); } });
+        next.addEventListener('click', () => { page++; load(); });
+        await load();
     },
 
     async renderReviewHistory(el) {
@@ -2610,7 +2980,8 @@ const App = {
             company: 'Company', bank: 'Bank', type_facility: 'Type of Facility', name_facility: 'Name of Facility',
             category: 'Category', year_application: 'Year', bfr: 'BFR', profit_rate: 'Profit Rate', rate_tenure: 'Tenure',
             status: 'Status', collateral: 'Collateral', total_requested: 'Total Requested', total_approved: 'Total Approved',
-            app_details: 'Details', hold_reason: 'Hold Reason', decline_reason: 'Decline Reason', cancel_reason: 'Cancellation Reason', discharge_note: 'Discharged Note', officers: 'Officers', annual_review: 'Annual Review',
+            app_details: 'Details', hold_reason: 'Hold Reason', decline_reason: 'Decline Reason', cancel_reason: 'Cancellation Reason', discharge_note: 'Discharged Note', discharge_note_text: 'Discharge Note Details', officers: 'Officers', annual_review: 'Annual Review',
+            bank_cancellation_letter: 'Bank Cancellation Letter', bank_cancellation_letter_path: 'Bank Letter File', bank_cancellation_letter_name: 'Bank Letter Name',
             name: 'Name', description: 'Description', bfr_current: 'BFR Current', bfr_previous: 'BFR Previous',
             property_detail: 'Property Detail', date_doc_sent: 'Doc Sent', date_updated: 'Date Updated'
         };
@@ -2687,6 +3058,10 @@ const App = {
 
                             <div class="bos-notes-box" style="margin-top:6px">
                                 Reviewed by <b>${esc(cr.reviewed_by_email || 'unknown')}</b> on ${UI.formatDate(cr.reviewed_at)}${cr.restored_at ? `<br>Restored on ${UI.formatDate(cr.restored_at)}` : ''}
+                                ${cr.review_notes ? `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
+                                    <span style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:.03em;color:var(--text-3);margin-bottom:2px">Review note</span>
+                                    <span>${esc(cr.review_notes)}</span>
+                                </div>` : ''}
                             </div>
 
                             <div class="bos-card-actions">

@@ -135,7 +135,7 @@ test.describe('FM Data Facilities Dashboard — Auth & Read-only', () => {
   });
 
   test('TC3: Navigation via sidebar', async ({ adminPage: page }) => {
-    const pages = ['applications', 'companies', 'banks', 'reports', 'bos_review', 'settings'];
+    const pages = ['applications', 'companies', 'banks', 'reports', 'bos_review', 'users', 'settings'];
 
     for (const pageKey of pages) {
       await test.step(`navigate to ${pageKey}`, async () => {
@@ -310,9 +310,12 @@ test.describe('FM Data Facilities Dashboard — Mutating flows', () => {
     await page.click('[data-page="settings"]');
     await expect(page.locator('#topbar-title')).toContainText('Settings');
 
-    await expect(page.locator('#admin-user-list')).toBeVisible({ timeout: 15000 });
     await expect(page.locator('#admin-page-permissions')).toBeVisible();
     await expect(page.locator('#admin-chart-visibility')).toBeVisible();
+
+    await page.click('[data-page="users"]');
+    await expect(page.locator('#topbar-title')).toContainText('Users');
+    await expect(page.locator('#admin-user-list')).toBeVisible({ timeout: 15000 });
   });
 
   test('TC8: RBAC verification (Staff view and limits)', async ({ adminPage, browser }) => {
@@ -335,6 +338,7 @@ test.describe('FM Data Facilities Dashboard — Mutating flows', () => {
         await openAuthenticated(browser, STAFF_STATE, staffEmail, staffPassword);
 
       await expect(staffPage.locator('#sidebar-user-role')).toContainText('Staff');
+      await expect(staffPage.locator('[data-page="users"]')).not.toBeAttached();
 
       await staffPage.click('[data-page="reports"]');
       const unfinishedPage = staffPage.locator('.unfinished-page');

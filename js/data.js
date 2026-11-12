@@ -31,6 +31,19 @@ const DB = {
         return result;
     },
 
+    async fetchApplicationDateHistory(id) {
+        const rows = [];
+        for (let offset = 0; ; offset += 500) {
+            const { data, error } = await supabaseClient.from('application_date_history')
+                .select('id,field_name,previous_date,new_date,recorded_at,recorded_by_email,source')
+                .eq('application_id', id).order('recorded_at', { ascending: false })
+                .order('id', { ascending: false }).range(offset, offset + 499);
+            if (error) throw error;
+            rows.push(...(data || []));
+            if (!data || data.length < 500) return rows;
+        }
+    },
+
     async getApplication(id) {
         const { data, error } = await supabaseClient
             .from('applications')
@@ -41,11 +54,39 @@ const DB = {
         return data;
     },
 
+    async _applicationTemplate() {
+        if (this._appTemplate !== undefined) return this._appTemplate;
+        let apps = this._cache;
+        if (!apps) {
+            const { data, error } = await supabaseClient
+                .from('applications')
+                .select('*')
+                .limit(1);
+            if (error) throw error;
+            apps = data;
+        }
+        this._appTemplate = (apps && apps[0]) ? apps[0] : null;
+        return this._appTemplate;
+    },
+
+    _filterApplicationPayload(payload, template) {
+        if (!template) return payload || {};
+        const allowed = new Set(Object.keys(template));
+        const filtered = {};
+        Object.entries(payload || {}).forEach(([key, value]) => {
+            if (allowed.has(key) && !['id', 'created_at', 'updated_at'].includes(key)) {
+                filtered[key] = value;
+            }
+        });
+        return filtered;
+    },
+
     async insertApplication(app) {
+        const template = await this._applicationTemplate();
         this._clearCache();
         const { data, error } = await supabaseClient
             .from('applications')
-            .insert([app])
+            .insert([this._filterApplicationPayload(app, template)])
             .select()
             .single();
         if (error) throw error;
@@ -73,6 +114,65 @@ const DB = {
             .eq('id', id);
         if (error) throw error;
         return true;
+    },
+
+    async uploadCancellationLetter(file) {
+        const cfg = typeof CLOUDINARY !== 'undefined' ? CLOUDINARY : {};
+        if (!cfg.cloudName || !cfg.uploadPreset ||
+            cfg.cloudName === 'YOUR_CLOUD_NAME' || cfg.uploadPreset === 'YOUR_UNSIGNED_PRESET') {
+            throw new Error('Cloudinary belum dikonfigurasi. Isi cloudName dan uploadPreset dalam js/cloudinary.js');
+        }
+        const form = new FormData();
+        form.append('file', file);
+        form.append('upload_preset', cfg.uploadPreset);
+        const res = await fetch(`https://api.cloudinary.com/v1_1/${cfg.cloudName}/auto/upload`, {
+            method: 'POST',
+            body: form
+        });
+        const result = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            throw new Error(result.error?.message || 'Cloudinary upload failed');
+        }
+        return result.secure_url;
+    },
+
+    async fetchAttachments() {
+        const readAll = async (table) => {
+            const rows = [];
+            for (let offset = 0; ; offset += 500) {
+                const { data, error } = await supabaseClient.from(table).select('*')
+                    .order('id', { ascending: true }).range(offset, offset + 499);
+                if (error) throw error;
+                rows.push(...(data || []));
+                if (!data || data.length < 500) return rows;
+            }
+        };
+        const [applications, requests] = await Promise.all([readAll('applications'), readAll('change_requests')]);
+        const files = new Map();
+        const add = (app, state, id) => {
+            const url = app?.bank_cancellation_letter_path;
+            if (!url || files.has(url)) return;
+            let safeUrl;
+            try { safeUrl = new URL(url); } catch { return; }
+            if (safeUrl.protocol !== 'https:' && safeUrl.protocol !== 'http:') return;
+            const name = app.bank_cancellation_letter_name || 'Bank cancellation letter';
+            const extension = (name.includes('.') ? name : safeUrl.pathname).split('.').pop().toLowerCase();
+            const format = extension === 'pdf' ? 'PDF' : ['png', 'jpg', 'jpeg', 'gif', 'webp', 'heic', 'avif'].includes(extension) ? 'Image' : 'Other';
+            files.set(url, { url: safeUrl.href, name, format, type: 'Bank cancellation letter',
+                application: app.name_facility || app.type_facility || 'Unnamed application',
+                company: app.company || 'Unknown company', bank: app.bank || '',
+                year: app.year_application || '', state, applicationId: id || '' });
+        };
+        applications.forEach(app => add(app, 'Current', app.id));
+        requests.filter(r => r.entity === 'application').sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))).forEach(r => {
+            add({ ...r.before_payload, ...r.payload }, r.status || 'PENDING', r.record_id || r.applied_record_id || r.id);
+            add(r.before_payload, 'Previous version', r.record_id || r.id);
+        });
+        return [...files.values()].sort((a, b) => a.company.localeCompare(b.company) || a.application.localeCompare(b.application));
+    },
+
+    async getCancellationLetterUrl(url) {
+        return url || null;
     },
 
     async fetchCompanies() {
@@ -198,6 +298,20 @@ const DB = {
 
     // ========== CHANGE REQUESTS (approval workflow) ==========
 
+    async fetchAuditEvents(filters = {}, page = 0) {
+        let query = supabaseClient.from('audit_events').select('*', { count: 'exact' })
+            .order('occurred_at', { ascending: false }).order('id', { ascending: false });
+        for (const key of ['entity', 'action', 'record_id', 'request_id', 'transaction_id']) {
+            if (filters[key]) query = query.eq(key, filters[key]);
+        }
+        if (filters.actor_email) query = query.ilike('actor_email', `%${filters.actor_email.replace(/[\\%_]/g, '\\$&')}%`);
+        if (filters.from) query = query.gte('occurred_at', `${filters.from}T00:00:00+08:00`);
+        if (filters.to) query = query.lte('occurred_at', `${filters.to}T23:59:59.999999+08:00`);
+        const { data, count, error } = await query.range(page * 50, page * 50 + 49);
+        if (error) throw error;
+        return { events: data || [], count: count || 0 };
+    },
+
     async fetchChangeRequests() {
         const { data, error } = await supabaseClient
             .from('change_requests')
@@ -237,11 +351,20 @@ const DB = {
         return true;
     },
 
-    // Central write path for every entity. Approvers (super_admin) write
-    // straight to the live tables; everyone else files a PENDING request
-    // that only takes effect once HOD approves it.
-    async saveChange(entity, action, recordId, payload, summary) {
-        if (Auth.isSuperAdmin()) {
+    // Application edits always wait for a different user's HOD review.
+    async saveChange(entity, action, recordId, payload, summary, original) {
+        if (entity === 'application' && action === 'UPDATE') {
+            const originalRecord = original || await this.getApplication(recordId);
+            const { data, error } = await supabaseClient.rpc('submit_application_edit', {
+                p_record_id: recordId,
+                p_payload: this._filterApplicationPayload(payload, originalRecord),
+                p_original: originalRecord,
+                p_summary: summary || ''
+            });
+            if (error) throw error;
+            return { queued: !!data, unchanged: !data, data };
+        }
+        if (Auth.isSuperAdmin() && !(entity === 'application' && action === 'CREATE')) {
             const data = await this._applyChange(entity, action, recordId, payload || {});
             return { queued: false, data };
         }
@@ -288,7 +411,8 @@ const DB = {
         throw new Error(`Unsupported change: ${entity} ${action}`);
     },
 
-    async approveChangeRequest(id) {
+    async approveChangeRequest(id, notes) {
+        if (!await Auth.canReviewChanges()) throw new Error('HOD Review access is required');
         const { data: cr, error } = await supabaseClient
             .from('change_requests')
             .select('*')
@@ -296,6 +420,10 @@ const DB = {
             .single();
         if (error) throw error;
         if (cr.status !== 'PENDING') throw new Error('This request has already been reviewed');
+        if (cr.requested_by === Auth.getUser()?.id) throw new Error('Another reviewer must review your changes');
+        if (cr.entity === 'application' && cr.action === 'UPDATE') {
+            return this.reviewApplicationEdit(id, 'APPROVED', notes);
+        }
 
         // Snapshot the current record so a wrong approval can be reversed later.
         let before = null;
@@ -308,6 +436,7 @@ const DB = {
 
         return this.updateChangeRequest(id, {
             status: 'APPROVED',
+            review_notes: notes || null,
             before_payload: before || null,
             applied_record_id: appliedId,
             reviewed_by: Auth.getUser()?.id || null,
@@ -317,6 +446,14 @@ const DB = {
     },
 
     async rejectChangeRequest(id, notes) {
+        if (!await Auth.canReviewChanges()) throw new Error('HOD Review access is required');
+        const { data: cr, error } = await supabaseClient.from('change_requests').select('*').eq('id', id).single();
+        if (error) throw error;
+        if (cr.status !== 'PENDING') throw new Error('This request has already been reviewed');
+        if (cr.requested_by === Auth.getUser()?.id) throw new Error('Another reviewer must review your changes');
+        if (cr.entity === 'application' && cr.action === 'UPDATE') {
+            return this.reviewApplicationEdit(id, 'REJECTED', notes);
+        }
         return this.updateChangeRequest(id, {
             status: 'REJECTED',
             review_notes: notes || null,
@@ -329,6 +466,7 @@ const DB = {
     // Undo a wrong approve/reject. For an approved request the applied change
     // is reverted; for both cases the request returns to PENDING for re-review.
     async restoreChangeRequest(id) {
+        if (!Auth.isSuperAdmin()) throw new Error('Only HOD can restore');
         const { data: cr, error } = await supabaseClient
             .from('change_requests')
             .select('*')
@@ -336,6 +474,9 @@ const DB = {
             .single();
         if (error) throw error;
         if (cr.status === 'PENDING') throw new Error('This request is already pending');
+        if (cr.entity === 'application' && cr.action === 'UPDATE') {
+            return this.reviewApplicationEdit(id, 'RESTORE');
+        }
 
         if (cr.status === 'APPROVED') {
             await this._revertChange(cr);
@@ -348,6 +489,15 @@ const DB = {
             restored_by_email: Auth.getEmail() || null,
             restored_at: new Date().toISOString()
         });
+    },
+
+    async reviewApplicationEdit(id, decision, notes) {
+        const { data, error } = await supabaseClient.rpc('review_application_edit', {
+            p_request_id: id, p_decision: decision, p_notes: notes || null
+        });
+        if (error) throw error;
+        this._clearCache();
+        return data;
     },
 
     _entityTable(entity) {
@@ -399,7 +549,7 @@ const DB = {
         const total = apps.length;
         const done = apps.filter(a => a.status === 'IN FORCE' || a.status === 'DONE');
         const settled = apps.filter(a => a.status === 'DISCHARGED' || a.status === 'SETTLED');
-        const inProgress = apps.filter(a => a.status === 'IN PROGRESS' || a.status === 'PREPARATION DOC BY FINANCE' || a.status === 'SUBMISSION DOC TO BANK');
+        const inProgress = apps.filter(a => ['IN PROGRESS', 'PREPARATION DOC BY FINANCE', 'SUBMISSION DOC TO BANK', 'REVIEW BY BANK'].includes(a.status));
         const declined = apps.filter(a => a.status === 'DECLINED' || a.status === 'DECLINED BY BANK' || a.status === 'DECLINED BY COMPANY');
         const cancelled = apps.filter(a => a.status === 'CANCELLED BY BANK');
         const hold = apps.filter(a => ['ON HOLD','REVIEW BY BOS','REVIEW BY HOD','PENDING'].includes(a.status));
@@ -436,6 +586,7 @@ const DB = {
             if (a.bank) bankCounts[a.bank] = (bankCounts[a.bank] || 0) + 1;
         });
 
+        statusCount['REVIEW BY BANK'] = apps.filter(a => a.status === 'REVIEW BY BANK').length;
         const companyTotals = {};
         apps.forEach(a => {
             if (!a.company) return;
@@ -559,6 +710,40 @@ const DB = {
             .single();
         if (error) throw error;
         return data;
+    },
+
+    async createUser(email, password, role) {
+        const tempClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
+            auth: {
+                persistSession: false,
+                autoRefreshToken: false,
+                detectSessionInUrl: false,
+                storageKey: 'sb-create-user-temp'
+            }
+        });
+
+        const { data, error } = await tempClient.auth.signUp({ email, password });
+        if (error) throw error;
+
+        const user = data?.user;
+        if (!user?.id) throw new Error('Could not create user account');
+        if (Array.isArray(user.identities) && user.identities.length === 0) {
+            throw new Error('This email is already registered');
+        }
+
+        const { error: profileError } = await supabaseClient
+            .from('profiles')
+            .upsert({
+                id: user.id,
+                email,
+                role,
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'id' });
+        if (profileError) throw profileError;
+
+        try { await tempClient.auth.signOut(); } catch (_) { }
+
+        return { id: user.id, email, role, needsConfirmation: !data.session };
     },
 
     async fetchPagePermissions() {

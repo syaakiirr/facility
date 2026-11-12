@@ -4,6 +4,7 @@
 -- 1. Buat 3 jadual: applications, banks, bos_review
 -- 2. Enable RLS + policy
 -- 3. Seed data: 20 bank, ~80 rekod permohonan, 2 bos review
+-- 4. Run add_application_date_history.sql to enable document/follow-up date tracking.
 -- ============================================================
 
 -- COMPANIES
@@ -55,6 +56,7 @@ CREATE TABLE IF NOT EXISTS applications (
   hold_reason      TEXT,
   cancel_reason    TEXT,
   discharge_note   BOOLEAN DEFAULT false,
+  discharge_note_text TEXT,
   officers         JSONB DEFAULT '[]'::jsonb,
   notes            TEXT,
   created_at       TIMESTAMPTZ DEFAULT NOW(),
@@ -220,6 +222,11 @@ CREATE POLICY "Authenticated users only" ON collaterals
 -- Add collateral_id FK to applications
 ALTER TABLE applications ADD COLUMN IF NOT EXISTS collateral_id UUID REFERENCES collaterals(id) ON DELETE SET NULL;
 
+-- Bank cancellation letter (DECLINED BY COMPANY) — file stored in Cloudinary
+ALTER TABLE applications ADD COLUMN IF NOT EXISTS bank_cancellation_letter      BOOLEAN DEFAULT false;
+ALTER TABLE applications ADD COLUMN IF NOT EXISTS bank_cancellation_letter_path TEXT;
+ALTER TABLE applications ADD COLUMN IF NOT EXISTS bank_cancellation_letter_name TEXT;
+
 -- Seed collateral data from existing application collateral values
 INSERT INTO collaterals (name, description) VALUES
   ('80% SJPP, 20% FD', 'SJPP guarantee with Fixed Deposit top-up'),
@@ -343,6 +350,7 @@ CREATE POLICY "Super admin can update chart_visibility"
 INSERT INTO page_permissions (role, page_key, is_allowed) VALUES
   ('staff', 'dashboard', true),
   ('staff', 'applications', true),
+  ('staff', 'attachments', true),
   ('staff', 'companies', true),
   ('staff', 'banks', true),
   ('staff', 'reports', true),
@@ -359,3 +367,4 @@ INSERT INTO chart_visibility (chart_key, chart_label, is_visible) VALUES
   ('chart-company-hbar', 'Top 10 Companies — Requested vs Approved', true),
   ('chart-decline-bar', 'Decline Reasons', true)
 ON CONFLICT (chart_key) DO NOTHING;
+

@@ -83,6 +83,15 @@ const Auth = {
         return this.profile?.role || 'staff';
     },
 
+    async canReviewChanges() {
+        if (!this.isAuthenticated()) return false;
+        if (this.isSuperAdmin()) return true;
+        const { data, error } = await supabaseClient.from('page_permissions')
+            .select('is_allowed').eq('role', this.getRole()).eq('page_key', 'bos_review').maybeSingle();
+        if (error) throw error;
+        return data?.is_allowed === true;
+    },
+
     isSuperAdmin() {
         return this.getRole() === 'super_admin';
     }

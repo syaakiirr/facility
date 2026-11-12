@@ -18,6 +18,29 @@ const UI = {
         }, duration);
     },
 
+    async renderApplicationDateHistory(container, applicationId) {
+        container.innerHTML = '<p role="status">Loading date history...</p>';
+        try {
+            const history = await DB.fetchApplicationDateHistory(applicationId);
+            if (!container.isConnected) return;
+            const esc = value => this.escapeHtml(value);
+            const date = value => value ? esc(this.formatDate(value)) : 'Not set';
+            container.innerHTML = `<p class="date-history-help">Saved application dates. Pending changes appear here after HOD approval.</p>` +
+                [['date_doc_sent', 'Document sent history'], ['date_followup', 'Follow-up history']].map(([field, label]) => {
+                    const events = history.filter(event => event.field_name === field);
+                    return `<section class="date-history-section"><h4>${label}</h4>${events.length ? `<ol>${events.map(event => {
+                        const recorded = new Date(event.recorded_at).toLocaleString('en-GB', { timeZone: 'Asia/Singapore', dateStyle: 'medium', timeStyle: 'short' });
+                        return `<li><div class="date-history-dates">${event.source === 'baseline' ? `Existing date: ${date(event.new_date)}` : `${date(event.previous_date)} → ${date(event.new_date)}`}</div>
+                            <p>${event.source === 'baseline' ? 'History tracking started' : 'Recorded'} ${esc(recorded)} (SGT)${event.recorded_by_email ? ` · ${esc(event.recorded_by_email)}` : ''}</p></li>`;
+                    }).join('')}</ol>` : '<p>No recorded date changes.</p>'}</section>`;
+                }).join('');
+        } catch (error) {
+            if (!container.isConnected) return;
+            container.innerHTML = '<p role="alert">Date history is unavailable. Please check that date history has been enabled for this database.</p><button type="button" class="btn-secondary btn-sm">Retry</button>';
+            container.querySelector('button').onclick = () => this.renderApplicationDateHistory(container, applicationId);
+        }
+    },
+
     openModal(id) {
         const el = document.getElementById(id);
         if (el) el.classList.add('open');
@@ -54,6 +77,12 @@ const UI = {
         });
     },
 
+    escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, c => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+    },
+
     formatCurrency(n) {
         if (!n || isNaN(n)) return 'RM 0';
         return 'RM ' + Number(n).toLocaleString('en-MY', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
@@ -78,6 +107,7 @@ const UI = {
             'REVIEW BY BOS': 'hold',
             'PREPARATION DOC BY FINANCE': 'progress',
             'SUBMISSION DOC TO BANK': 'progress',
+            'REVIEW BY BANK': 'progress',
             'DECLINED': 'declined',
             'DECLINED BY BANK': 'declined',
             'DECLINED BY COMPANY': 'declined',
@@ -91,7 +121,7 @@ const UI = {
         const progressMap = {
             'IN FORCE': 100, 'DONE': 100, 'DISCHARGED': 100, 'SETTLED': 100, 'IN PROGRESS': 50, 'PENDING': 10,
             'ON HOLD': 30, 'REVIEW BY HOD': 80, 'REVIEW BY BOS': 80,
-            'PREPARATION DOC BY FINANCE': 20, 'SUBMISSION DOC TO BANK': 70,
+            'PREPARATION DOC BY FINANCE': 20, 'SUBMISSION DOC TO BANK': 70, 'REVIEW BY BANK': 70,
             'DECLINED': 100, 'DECLINED BY BANK': 100, 'DECLINED BY COMPANY': 100, 'CANCELLED BY BANK': 0
         };
         const statusColors = {
@@ -106,6 +136,7 @@ const UI = {
             'REVIEW BY BOS': '#8b5cf6',
             'PREPARATION DOC BY FINANCE': '#3b82f6', // Light Blue
             'SUBMISSION DOC TO BANK': '#0284c7',     // Sky Blue
+            'REVIEW BY BANK': '#0284c7',
             'DECLINED': '#dc2626',      // Red
             'DECLINED BY BANK': '#dc2626',
             'DECLINED BY COMPANY': '#dc2626',
